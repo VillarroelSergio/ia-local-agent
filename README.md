@@ -1,1 +1,230 @@
-# ia-local-agent
+# IA Local Agent
+
+Agente IA local para Windows usando modelos open source servidos desde LM Studio y una interfaz Python por consola.
+
+El objetivo del proyecto es evolucionar desde un chat local simple hacia un copiloto privado con tools, memoria, RAG, automatizacion Windows, voz y UI propia.
+
+## Estado Actual
+
+- Chat local con LM Studio usando API compatible con OpenAI.
+- Streaming de respuestas en tiempo real.
+- Historial de conversacion en memoria durante la sesion.
+- Tools manuales desde consola.
+- Tool calling automatico con confirmacion del usuario antes de ejecutar acciones.
+- Tools con argumentos JSON.
+- Primeras integraciones Windows y sistema.
+
+## Estructura
+
+```text
+ia-local-agent/
+|-- data/
+|-- docs/
+|-- rag/
+|-- src/
+|   |-- agent.py
+|   `-- tools.py
+|-- ui/
+|-- venv/
+`-- README.md
+```
+
+## Requisitos
+
+- Windows.
+- Python.
+- LM Studio con el servidor local activado.
+- Modelo cargado en LM Studio.
+
+Librerias usadas actualmente:
+
+```text
+openai
+psutil
+```
+
+Tambien estan previstas o instaladas para fases futuras:
+
+```text
+langchain
+chromadb
+pyautogui
+```
+
+Nota: actualmente existe una carpeta llamada `requeriments.txt`. Lo correcto para el futuro sera tener un archivo `requirements.txt`.
+
+## Configuracion LM Studio
+
+Servidor local:
+
+```text
+http://127.0.0.1:1234
+```
+
+Base URL OpenAI-compatible:
+
+```text
+http://127.0.0.1:1234/v1
+```
+
+Configuracion recomendada:
+
+```text
+Modelo: Qwen3.5 9B Q4_K_M
+Context Length: 4096
+GPU Offload: MAX
+Flash Attention: ON si esta disponible
+Batch Size: 512-1024
+```
+
+## Ejecutar
+
+Desde la raiz del proyecto:
+
+```powershell
+venv\Scripts\python.exe src\agent.py
+```
+
+Para salir:
+
+```text
+salir
+```
+
+## Uso
+
+Puedes chatear normalmente:
+
+```text
+Tu: resume que puedes hacer
+```
+
+El modelo puede pedir ejecutar una tool. Antes de hacerlo, el agente pedira confirmacion:
+
+```text
+El modelo quiere ejecutar 'get_system_info' con argumentos:
+{}
+Confirmar? (s/n):
+```
+
+Solo se ejecuta si respondes `s`, `si`, `y` o `yes`.
+
+## Tools Manuales
+
+Tambien puedes ejecutar tools directamente desde la consola:
+
+```text
+/tool notepad
+/tool calc
+/tool sistema
+```
+
+Tools con argumentos:
+
+```text
+/tool get_running_processes {"limit": 10}
+/tool search_files {"path": ".", "pattern": "*.md", "limit": 5}
+/tool run_powershell {"command": "Get-Date"}
+```
+
+## Tools Disponibles
+
+### open_notepad
+
+Abre el Bloc de notas de Windows.
+
+### open_calculator
+
+Abre la calculadora de Windows.
+
+### get_system_info
+
+Devuelve informacion basica del sistema:
+
+- version de Windows
+- CPU
+- nucleos e hilos
+- RAM total y disponible
+
+### get_running_processes
+
+Lista procesos activos ordenados por uso de memoria.
+
+Argumentos:
+
+```json
+{
+  "limit": 15
+}
+```
+
+### search_files
+
+Busca archivos dentro de una carpeta usando un patron glob.
+
+Argumentos:
+
+```json
+{
+  "path": ".",
+  "pattern": "*.py",
+  "limit": 20
+}
+```
+
+### run_powershell
+
+Ejecuta comandos PowerShell de inspeccion permitidos por allowlist y devuelve:
+
+- codigo de salida
+- stdout
+- stderr
+
+Argumentos:
+
+```json
+{
+  "command": "Get-Date",
+  "timeout": 10
+}
+```
+
+Por seguridad bloquea todo lo que no este permitido explicitamente.
+
+Comandos permitidos actualmente:
+
+- `Get-Date`
+- `Get-Process`
+- `Get-Service`
+- `Get-ComputerInfo`
+- `Get-ChildItem`
+- `Test-Path`
+- `Where-Object`
+- `Select-Object`
+- `Sort-Object`
+- `Measure-Object`
+- `Format-Table`
+- `Format-List`
+
+Tambien bloquea tokens de composicion o redireccion como `;`, `&&`, `||`, `$(`, backticks, `>`, `>>` y `<`.
+
+Limites actuales:
+
+- maximo 15 segundos por comando PowerShell
+- maximo 300 caracteres por comando PowerShell
+- maximo 50 procesos en `get_running_processes`
+- maximo 100 resultados en `search_files`
+
+## Roadmap
+
+1. Mejorar seguridad y permisos de tools.
+2. Crear memoria persistente.
+3. Anadir RAG local sobre documentos.
+4. Integrar embeddings locales.
+5. Automatizacion Windows avanzada.
+6. UI propia.
+7. Voz local con STT y TTS.
+
+## Filosofia
+
+Este proyecto no busca ser solo un chat local. La meta es construir un Jarvis/Copilot privado para Windows, capaz de ayudar en desarrollo, controlar herramientas reales, recordar contexto y funcionar de forma local.

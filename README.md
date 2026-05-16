@@ -13,6 +13,7 @@ El objetivo del proyecto es evolucionar desde un chat local simple hacia un copi
 - Tool calling automatico con confirmacion del usuario antes de ejecutar acciones.
 - Tools con argumentos JSON.
 - Primeras integraciones Windows y sistema.
+- Memoria persistente simple en JSON local.
 
 ## Estructura
 
@@ -23,6 +24,7 @@ ia-local-agent/
 |-- rag/
 |-- src/
 |   |-- agent.py
+|   |-- memory.py
 |   `-- tools.py
 |-- ui/
 |-- venv/
@@ -127,6 +129,26 @@ Tools con argumentos:
 /tool run_powershell {"command": "Get-Date"}
 ```
 
+## Memoria Persistente
+
+La memoria se guarda localmente en:
+
+```text
+data/memory.json
+```
+
+Este archivo esta ignorado por Git porque puede contener informacion privada del usuario.
+
+Comandos disponibles:
+
+```text
+/remember El usuario prefiere respuestas breves en espanol.
+/memories
+/forget id_de_memoria
+```
+
+Las memorias guardadas se inyectan en el prompt del sistema al iniciar y antes de cada respuesta del modelo.
+
 ## Tools Disponibles
 
 ### open_notepad
@@ -219,11 +241,12 @@ Limites actuales:
 
 1. Mejorar seguridad y permisos de tools.
 2. Crear memoria persistente.
-3. Anadir RAG local sobre documentos.
-4. Integrar embeddings locales.
-5. Automatizacion Windows avanzada.
-6. UI propia.
-7. Voz local con STT y TTS.
+3. Mejorar memoria con busqueda semantica.
+4. Anadir RAG local sobre documentos.
+5. Integrar embeddings locales.
+6. Automatizacion Windows avanzada.
+7. UI propia.
+8. Voz local con STT y TTS.
 
 ## Filosofia
 

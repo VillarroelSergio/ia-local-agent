@@ -1,3 +1,10 @@
+"""Memoria persistente simple para el agente local.
+
+Este modulo guarda recuerdos del usuario en un archivo JSON local. Es una
+primera capa de memoria explicita: el usuario decide que recordar con comandos
+como /remember, y el agente inyecta esos recuerdos en el prompt del sistema.
+"""
+
 import json
 from datetime import datetime
 from pathlib import Path
@@ -10,6 +17,7 @@ MAX_MEMORY_ITEMS_IN_PROMPT = 20
 
 
 def ensure_memory_file():
+    """Crea la carpeta y el archivo de memoria si todavia no existen."""
     MEMORY_PATH.parent.mkdir(parents=True, exist_ok=True)
 
     if not MEMORY_PATH.exists():
@@ -17,6 +25,11 @@ def ensure_memory_file():
 
 
 def load_memories():
+    """Carga todas las memorias persistentes desde disco.
+
+    Si el archivo no existe, esta corrupto o no contiene una lista JSON, devuelve
+    una lista vacia para que el agente pueda seguir funcionando.
+    """
     ensure_memory_file()
 
     try:
@@ -31,6 +44,7 @@ def load_memories():
 
 
 def save_memories(memories):
+    """Guarda la lista completa de memorias en formato JSON legible."""
     ensure_memory_file()
     MEMORY_PATH.write_text(
         json.dumps(memories, indent=2, ensure_ascii=False),
@@ -39,6 +53,7 @@ def save_memories(memories):
 
 
 def remember(content):
+    """Guarda un nuevo recuerdo y devuelve el registro creado."""
     content = content.strip()
 
     if not content:
@@ -57,6 +72,7 @@ def remember(content):
 
 
 def forget(memory_id):
+    """Elimina una memoria por id corto y devuelve el resultado."""
     memories = load_memories()
     remaining_memories = [
         memory for memory in memories
@@ -71,6 +87,7 @@ def forget(memory_id):
 
 
 def format_memories_for_prompt():
+    """Convierte las memorias recientes en texto listo para el system prompt."""
     memories = load_memories()
 
     if not memories:

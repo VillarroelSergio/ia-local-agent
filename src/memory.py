@@ -6,22 +6,28 @@ como /remember, y el agente inyecta esos recuerdos en el prompt del sistema.
 """
 
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-MEMORY_PATH = PROJECT_ROOT / "data" / "memory.json"
 MAX_MEMORY_ITEMS_IN_PROMPT = 20
+
+
+def get_memory_path():
+    """Devuelve la ruta actual de memoria desde el entorno."""
+    return PROJECT_ROOT / os.getenv("MEMORY_PATH", "data/memory.json")
 
 
 def ensure_memory_file():
     """Crea la carpeta y el archivo de memoria si todavia no existen."""
-    MEMORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    memory_path = get_memory_path()
+    memory_path.parent.mkdir(parents=True, exist_ok=True)
 
-    if not MEMORY_PATH.exists():
-        MEMORY_PATH.write_text("[]", encoding="utf-8")
+    if not memory_path.exists():
+        memory_path.write_text("[]", encoding="utf-8")
 
 
 def load_memories():
@@ -33,7 +39,7 @@ def load_memories():
     ensure_memory_file()
 
     try:
-        memories = json.loads(MEMORY_PATH.read_text(encoding="utf-8"))
+        memories = json.loads(get_memory_path().read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return []
 
@@ -46,7 +52,7 @@ def load_memories():
 def save_memories(memories):
     """Guarda la lista completa de memorias en formato JSON legible."""
     ensure_memory_file()
-    MEMORY_PATH.write_text(
+    get_memory_path().write_text(
         json.dumps(memories, indent=2, ensure_ascii=False),
         encoding="utf-8",
     )

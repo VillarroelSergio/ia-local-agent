@@ -6,6 +6,7 @@ compatibilidad, pero el nucleo ya puede reutilizarse desde una UI o API local.
 """
 
 import json
+import sys
 
 try:
     from config import get_settings
@@ -37,6 +38,9 @@ class LocalAgent:
             path=self.settings.chroma_path,
             enabled=self.settings.semantic_memory_enabled,
             max_results=self.settings.semantic_memory_results,
+            embedding_provider=self.settings.semantic_embedding_provider,
+            embedding_model=self.settings.semantic_embedding_model,
+            long_term_enabled=self.settings.long_term_memory_enabled,
         )
         self.conversations = ConversationManager(
             ConversationStore(self.settings.conversations_path)
@@ -52,10 +56,20 @@ class LocalAgent:
             semantic_memory=self.semantic_memory,
         )
 
-    def stream_response(self, use_tools=True):
+    def stream_response(self, use_tools=True, lmstudio_compat=None):
         """Solicita una respuesta al modelo y la imprime en streaming."""
+        if lmstudio_compat is None:
+            lmstudio_compat = self.provider.name == "lmstudio"
+
+        extra_reserved_tokens = 0
+        if use_tools:
+            tools_payload = json.dumps(TOOL_SCHEMAS, ensure_ascii=False)
+            extra_reserved_tokens = (len(tools_payload) // 4) + 256
+
         messages = self.context_builder.build_messages(
-            self.conversations.get_messages()
+            self.conversations.get_messages(),
+            lmstudio_compat=lmstudio_compat,
+            extra_reserved_tokens=extra_reserved_tokens,
         )
         request = LLMRequest(
             model=self.settings.default_model,
@@ -156,7 +170,7 @@ class LocalAgent:
         if not self.confirm_tool(tool_name, arguments):
             return "Tool cancelada por el usuario."
 
-        return run_tool(tool_name, arguments)
+        return run_tool(tool_name, arguments, preapproved=True)
 
     def handle_memory_command(self, user_input):
         """Gestiona comandos manuales de memoria."""
@@ -175,8 +189,40 @@ class LocalAgent:
                 return True
 
             for memory in memories:
-                print(f"- [{memory.get('id')}] {memory.get('content')}")
+                print(
+                    f"- [{memory.get('id')}] "
+                    f"({memory.get('category')}, importancia {memory.get('importance')}) "
+                    f"{memory.get('content')}"
+                )
 
+            return True
+
+        if user_input.startswith("/memory_search "):
+            query = user_input.removeprefix("/memory_search ").strip()
+            results = self.semantic_memory.search(query)
+            print("\nMemoria semantica:")
+
+            if not results:
+                print("No hay resultados relevantes.")
+                return True
+
+            for result in results:
+                source = result.metadata.get("type", "semantic")
+                distance = (
+                    f"{result.distance:.4f}"
+                    if result.distance is not None else "n/a"
+                )
+                print(f"- [{source}:{result.id} d={distance}] {result.content}")
+
+            return True
+
+        if user_input == "/memory_stats":
+            print("\nMemoria:", self.semantic_memory.memory_stats())
+            return True
+
+        if user_input == "/memory_rebuild":
+            result = self.rebuild_semantic_memory()
+            print("\nMemoria:", result)
             return True
 
         if user_input.startswith("/forget "):
@@ -201,7 +247,7 @@ class LocalAgent:
             print("\nTool: JSON invalido en los argumentos:", error)
             return True
 
-        result = run_tool(tool_name.lower(), arguments)
+        result = run_tool(tool_name.lower(), arguments, preapproved=True)
         print("\nTool:", result)
         return True
 
@@ -233,7 +279,10 @@ class LocalAgent:
                 name=tool_call["function"]["name"],
             ))
 
-        final_message, _ = self.stream_response(use_tools=False)
+        final_message, _ = self.stream_response(
+            use_tools=False,
+            lmstudio_compat=True,
+        )
 
         self.conversations.append(Message(
             role="assistant",
@@ -264,18 +313,48 @@ class LocalAgent:
         for message in messages[history_length:]:
             self.semantic_memory.add_conversation_message(message)
 
+    def rebuild_semantic_memory(self):
+        """Reindexa en Chroma todos los mensajes persistidos en SQLite."""
+        indexed = 0
+
+        for conversation in self.conversations.conversations.values():
+            for message in conversation.messages:
+                before = indexed
+                self.semantic_memory.add_conversation_message(message)
+
+                if message.role in {"user", "assistant"} and message.content:
+                    indexed = before + 1
+
+        return {
+            "indexed_messages": indexed,
+            **self.semantic_memory.memory_stats(),
+        }
+
+
+def configure_console_output():
+    """Evita errores Unicode al imprimir respuestas del modelo en Windows."""
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except AttributeError:
+        pass
+
 
 def main():
     """Bucle principal de consola del agente."""
+    configure_console_output()
     agent = LocalAgent()
 
     print("Agente IA local iniciado. Escribe 'salir' para terminar.")
     print("Tools manuales: /tool notepad, /tool calc, /tool sistema")
-    print("Memoria: /remember texto, /memories, /forget id")
+    print("Memoria: /remember texto, /memories, /memory_search texto, /memory_stats, /memory_rebuild, /forget id")
     print(f"Provider: {agent.settings.default_provider} | Modelo: {agent.settings.default_model}")
 
     while True:
-        user_input = input("\nTu: ").strip()
+        try:
+            user_input = input("\nTu: ").strip()
+        except EOFError:
+            break
 
         if user_input.lower() == "salir":
             break

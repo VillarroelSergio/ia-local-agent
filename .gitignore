@@ -6,4 +6,8 @@ __pycache__/
 chroma/
 data/conversations.sqlite3
 data/conversations.sqlite3-*
+data/*_test*.sqlite3
 data/chroma/
+data/chroma_*/
+data/hf_cache/
+data/tool_audit.jsonl

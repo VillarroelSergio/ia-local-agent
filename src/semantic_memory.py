@@ -1,13 +1,8 @@
-"""Memoria semantica local basada en ChromaDB.
-
-La funcion de embeddings incluida es local y determinista. No compite con un
-modelo de embeddings real, pero permite tener Chroma integrado sin depender de
-descargas. Mas adelante se puede sustituir por sentence-transformers u Ollama
-embeddings manteniendo esta interfaz.
-"""
+"""Memoria semantica local basada en ChromaDB."""
 
 import hashlib
 import math
+import os
 import re
 from dataclasses import dataclass
 from datetime import datetime
@@ -18,6 +13,26 @@ import chromadb
 
 
 TOKEN_PATTERN = re.compile(r"\w+", re.UNICODE)
+MEMORY_PREFIX_PATTERN = re.compile(
+    r"^\s*(?:recuerda que|recordar que|remember that)\s+(.+)$",
+    re.IGNORECASE,
+)
+PROFILE_PATTERNS = [
+    re.compile(r"\bmi nombre es\s+(.+)", re.IGNORECASE),
+    re.compile(r"\bme llamo\s+(.+)", re.IGNORECASE),
+    re.compile(r"\bprefiero\s+(.+)", re.IGNORECASE),
+    re.compile(r"\bme gusta\s+(.+)", re.IGNORECASE),
+    re.compile(r"\bno me gusta\s+(.+)", re.IGNORECASE),
+    re.compile(r"\buso\s+(.+)", re.IGNORECASE),
+    re.compile(r"\btrabajo (?:con|en)\s+(.+)", re.IGNORECASE),
+    re.compile(r"\bsoy\s+(.+)", re.IGNORECASE),
+]
+
+
+def safe_collection_suffix(value):
+    digest = hashlib.sha1(value.encode("utf-8")).hexdigest()[:10]
+    clean = re.sub(r"[^a-zA-Z0-9_]+", "_", value.lower()).strip("_")
+    return f"{clean[:32]}_{digest}"
 
 
 class LocalHashEmbeddingFunction:
@@ -59,6 +74,36 @@ class LocalHashEmbeddingFunction:
         return [value / norm for value in vector]
 
 
+class SentenceTransformerEmbeddingFunction:
+    """Embedding local real usando sentence-transformers."""
+
+    def __init__(self, model_name, cache_folder=None):
+        from sentence_transformers import SentenceTransformer
+
+        self.model_name = model_name
+        self.model = SentenceTransformer(
+            model_name,
+            cache_folder=str(cache_folder) if cache_folder else None,
+        )
+
+    def name(self):
+        return f"sentence_transformers:{self.model_name}"
+
+    def __call__(self, input):
+        embeddings = self.model.encode(
+            input,
+            normalize_embeddings=True,
+            show_progress_bar=False,
+        )
+        return embeddings.tolist()
+
+    def embed_query(self, input):
+        return self.__call__(input)
+
+    def embed_documents(self, input):
+        return self.__call__(input)
+
+
 @dataclass
 class SemanticResult:
     id: str
@@ -70,11 +115,23 @@ class SemanticResult:
 class SemanticMemoryManager:
     """Gestiona colecciones Chroma para memoria y conversaciones."""
 
-    def __init__(self, path, enabled=True, max_results=5):
+    def __init__(
+        self,
+        path,
+        enabled=True,
+        max_results=5,
+        embedding_provider="auto",
+        embedding_model="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+        long_term_enabled=True,
+    ):
         self.path = Path(path)
         self.enabled = enabled
         self.max_results = max_results
-        self.embedding_function = LocalHashEmbeddingFunction()
+        self.embedding_provider = embedding_provider
+        self.embedding_model = embedding_model
+        self.long_term_enabled = long_term_enabled
+        self.embedding_cache_path = self.path.parent / "hf_cache"
+        self.embedding_function = self.build_embedding_function()
         self.client = None
         self.memories = None
         self.conversation_messages = None
@@ -85,18 +142,58 @@ class SemanticMemoryManager:
     def initialize(self):
         self.path.mkdir(parents=True, exist_ok=True)
         self.client = chromadb.PersistentClient(path=str(self.path))
+        collection_suffix = self.collection_suffix()
+        memories_name = self.collection_name("explicit_memories", collection_suffix)
+        messages_name = self.collection_name("conversation_messages", collection_suffix)
         self.memories = self.client.get_or_create_collection(
-            name="explicit_memories",
+            name=memories_name,
             embedding_function=self.embedding_function,
-            metadata={"description": "Recuerdos explicitos del usuario"},
+            metadata={
+                "description": "Recuerdos explicitos del usuario",
+                "embedding": self.embedding_function.name(),
+            },
         )
         self.conversation_messages = self.client.get_or_create_collection(
-            name="conversation_messages",
+            name=messages_name,
             embedding_function=self.embedding_function,
-            metadata={"description": "Mensajes conversacionales persistidos"},
+            metadata={
+                "description": "Mensajes conversacionales persistidos",
+                "embedding": self.embedding_function.name(),
+            },
         )
 
-    def remember(self, content):
+    def build_embedding_function(self):
+        provider = (self.embedding_provider or "auto").lower()
+
+        if provider in {"auto", "sentence_transformers", "sentence-transformers"}:
+            try:
+                os.environ.setdefault("HF_HOME", str(self.embedding_cache_path))
+                os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+                return SentenceTransformerEmbeddingFunction(
+                    self.embedding_model,
+                    cache_folder=self.embedding_cache_path,
+                )
+            except Exception:
+                if provider != "auto":
+                    raise
+
+        return LocalHashEmbeddingFunction()
+
+    def collection_suffix(self):
+        embedding_name = self.embedding_function.name()
+
+        if embedding_name == "local_hash_embeddings":
+            return ""
+
+        return safe_collection_suffix(embedding_name)
+
+    def collection_name(self, base_name, suffix):
+        if not suffix:
+            return base_name
+
+        return f"{base_name}_{suffix}"
+
+    def remember(self, content, *, category="explicit", importance=5, source="manual"):
         """Guarda un recuerdo explicito directamente en ChromaDB."""
         content = content.strip()
 
@@ -107,6 +204,11 @@ class SemanticMemoryManager:
             "id": uuid4().hex[:8],
             "content": content,
             "created_at": datetime.now().isoformat(timespec="seconds"),
+            "updated_at": datetime.now().isoformat(timespec="seconds"),
+            "category": category,
+            "importance": int(importance),
+            "source": source,
+            "access_count": 0,
         }
         self.add_memory(memory)
         return memory
@@ -127,6 +229,12 @@ class SemanticMemoryManager:
             metadatas=[{
                 "type": "explicit_memory",
                 "created_at": memory.get("created_at", ""),
+                "updated_at": memory.get("updated_at", memory.get("created_at", "")),
+                "category": memory.get("category", "explicit"),
+                "importance": int(memory.get("importance", 5)),
+                "source": memory.get("source", "manual"),
+                "access_count": int(memory.get("access_count", 0)),
+                "last_accessed_at": memory.get("last_accessed_at", ""),
             }],
         )
 
@@ -146,9 +254,18 @@ class SemanticMemoryManager:
                 "id": memory_id,
                 "content": document,
                 "created_at": (metadata or {}).get("created_at", ""),
+                "updated_at": (metadata or {}).get("updated_at", ""),
+                "category": (metadata or {}).get("category", "explicit"),
+                "importance": (metadata or {}).get("importance", 5),
+                "source": (metadata or {}).get("source", "manual"),
+                "access_count": (metadata or {}).get("access_count", 0),
+                "last_accessed_at": (metadata or {}).get("last_accessed_at", ""),
             })
 
-        memories.sort(key=lambda memory: memory.get("created_at", ""))
+        memories.sort(key=lambda memory: (
+            int(memory.get("importance", 5)),
+            memory.get("updated_at") or memory.get("created_at", ""),
+        ))
         return memories
 
     def forget(self, memory_id):
@@ -170,6 +287,18 @@ class SemanticMemoryManager:
 
         self.memories.delete(ids=[memory_id])
 
+    def memory_stats(self):
+        if not self.enabled:
+            return {"enabled": False}
+
+        return {
+            "enabled": True,
+            "embedding": self.embedding_function.name(),
+            "explicit_memories": self.memories.count(),
+            "conversation_messages": self.conversation_messages.count(),
+            "long_term_enabled": self.long_term_enabled,
+        }
+
     def add_conversation_message(self, message):
         if not self.enabled or message.role not in {"user", "assistant"}:
             return
@@ -188,6 +317,9 @@ class SemanticMemoryManager:
             }],
         )
 
+        if message.role == "user":
+            self.promote_long_term_memory(message.content)
+
     def delete_conversation_messages(self, message_ids):
         if not self.enabled or not message_ids:
             return
@@ -203,7 +335,9 @@ class SemanticMemoryManager:
         results.extend(self.search_collection(self.memories, query, limit))
         results.extend(self.search_collection(self.conversation_messages, query, limit))
         results.sort(key=lambda result: result.distance if result.distance is not None else 999)
-        return results[:limit]
+        selected = results[:limit]
+        self.touch_explicit_memories(selected)
+        return selected
 
     def search_collection(self, collection, query, limit):
         if collection.count() == 0:
@@ -233,6 +367,127 @@ class SemanticMemoryManager:
                 distances,
             )
         ]
+
+    def touch_explicit_memories(self, results):
+        memory_ids = [
+            result.id for result in results
+            if result.metadata.get("type") == "explicit_memory"
+        ]
+
+        if not memory_ids:
+            return
+
+        response = self.memories.get(
+            ids=memory_ids,
+            include=["documents", "metadatas"],
+        )
+        now = datetime.now().isoformat(timespec="seconds")
+
+        for memory_id, document, metadata in zip(
+            response.get("ids", []),
+            response.get("documents", []),
+            response.get("metadatas", []),
+        ):
+            metadata = metadata or {}
+            metadata["access_count"] = int(metadata.get("access_count", 0)) + 1
+            metadata["last_accessed_at"] = now
+            self.memories.upsert(
+                ids=[memory_id],
+                documents=[document],
+                metadatas=[metadata],
+            )
+
+    def promote_long_term_memory(self, text):
+        if not self.enabled or not self.long_term_enabled:
+            return None
+
+        candidate = self.extract_memory_candidate(text)
+
+        if candidate is None:
+            return None
+
+        existing = self.find_duplicate_memory(candidate["content"])
+
+        if existing:
+            return self.refresh_memory(existing, candidate)
+
+        return self.remember(
+            candidate["content"],
+            category=candidate["category"],
+            importance=candidate["importance"],
+            source="auto",
+        )
+
+    def extract_memory_candidate(self, text):
+        cleaned = " ".join((text or "").strip().split())
+
+        if len(cleaned) < 8 or len(cleaned) > 500:
+            return None
+
+        prefix_match = MEMORY_PREFIX_PATTERN.match(cleaned)
+
+        if prefix_match:
+            return {
+                "content": prefix_match.group(1).strip(),
+                "category": "explicit",
+                "importance": 8,
+            }
+
+        for pattern in PROFILE_PATTERNS:
+            match = pattern.search(cleaned)
+
+            if match:
+                return {
+                    "content": cleaned,
+                    "category": "profile",
+                    "importance": 7,
+                }
+
+        return None
+
+    def find_duplicate_memory(self, content):
+        normalized = self.normalize_memory_text(content)
+
+        for memory in self.list_memories():
+            if self.normalize_memory_text(memory.get("content", "")) == normalized:
+                return SemanticResult(
+                    id=memory["id"],
+                    content=memory["content"],
+                    metadata=memory,
+                )
+
+        matches = self.search_collection(self.memories, content, 3)
+
+        for match in matches:
+            if match.distance is not None and match.distance <= 0.12:
+                return match
+
+        return None
+
+    def refresh_memory(self, existing, candidate):
+        now = datetime.now().isoformat(timespec="seconds")
+        metadata = {
+            **existing.metadata,
+            "type": "explicit_memory",
+            "updated_at": now,
+            "category": candidate.get("category", existing.metadata.get("category", "explicit")),
+            "importance": max(
+                int(existing.metadata.get("importance", 5)),
+                int(candidate.get("importance", 5)),
+            ),
+            "source": existing.metadata.get("source", "auto"),
+            "access_count": int(existing.metadata.get("access_count", 0)),
+            "last_accessed_at": existing.metadata.get("last_accessed_at", ""),
+        }
+        self.memories.upsert(
+            ids=[existing.id],
+            documents=[existing.content],
+            metadatas=[metadata],
+        )
+        return {"updated": existing.id, "content": existing.content}
+
+    def normalize_memory_text(self, text):
+        return " ".join(TOKEN_PATTERN.findall((text or "").lower()))
 
     def format_explicit_for_prompt(self, limit=20):
         memories = self.list_memories()

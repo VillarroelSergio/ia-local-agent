@@ -51,6 +51,7 @@ Librerias usadas actualmente:
 openai
 psutil
 chromadb
+sentence-transformers
 ```
 
 Tambien estan previstas para fases futuras:
@@ -162,10 +163,18 @@ Comandos disponibles:
 ```text
 /remember El usuario prefiere respuestas breves en espanol.
 /memories
+/memory_search preferencias del usuario
+/memory_stats
+/memory_rebuild
 /forget id_de_memoria
 ```
 
 Las memorias guardadas se inyectan en el prompt del sistema al iniciar y antes de cada respuesta del modelo.
+
+La memoria semantica usa ChromaDB con embeddings locales. Por defecto intenta
+usar `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` mediante
+`sentence-transformers`; si esa libreria o el modelo no estan disponibles, cae
+temporalmente al embedding hash local para mantener el agente operativo.
 
 ## Arquitectura Backend
 
@@ -209,6 +218,9 @@ CONVERSATIONS_PATH=data/conversations.sqlite3
 CHROMA_PATH=data/chroma
 SEMANTIC_MEMORY_ENABLED=true
 SEMANTIC_MEMORY_RESULTS=5
+SEMANTIC_EMBEDDING_PROVIDER=auto
+SEMANTIC_EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+LONG_TERM_MEMORY_ENABLED=true
 LOG_LEVEL=INFO
 ```
 

@@ -75,6 +75,9 @@ class Settings:
     chroma_path: Path
     semantic_memory_enabled: bool
     semantic_memory_results: int
+    semantic_embedding_provider: str
+    semantic_embedding_model: str
+    long_term_memory_enabled: bool
     log_level: str
 
 
@@ -96,5 +99,11 @@ def get_settings():
         chroma_path=PROJECT_ROOT / os.getenv("CHROMA_PATH", "data/chroma"),
         semantic_memory_enabled=env_bool("SEMANTIC_MEMORY_ENABLED", True),
         semantic_memory_results=env_int("SEMANTIC_MEMORY_RESULTS", 5),
+        semantic_embedding_provider=os.getenv("SEMANTIC_EMBEDDING_PROVIDER", "auto"),
+        semantic_embedding_model=os.getenv(
+            "SEMANTIC_EMBEDDING_MODEL",
+            "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+        ),
+        long_term_memory_enabled=env_bool("LONG_TERM_MEMORY_ENABLED", True),
         log_level=os.getenv("LOG_LEVEL", "INFO"),
     )

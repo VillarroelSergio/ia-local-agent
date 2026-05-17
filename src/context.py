@@ -27,8 +27,13 @@ class SlidingWindowPolicy:
         self.max_context_tokens = max_context_tokens
         self.reserved_response_tokens = reserved_response_tokens
 
-    def fit(self, system_message, messages):
-        budget = max(512, self.max_context_tokens - self.reserved_response_tokens)
+    def fit(self, system_message, messages, extra_reserved_tokens=0):
+        budget = max(
+            512,
+            self.max_context_tokens
+            - self.reserved_response_tokens
+            - extra_reserved_tokens,
+        )
         selected = []
         used = self.token_counter.count_message(system_message)
 
@@ -54,7 +59,12 @@ class ContextBuilder:
         self.settings = settings
         self.semantic_memory = semantic_memory
 
-    def build_messages(self, conversation_messages):
+    def build_messages(
+        self,
+        conversation_messages,
+        lmstudio_compat=False,
+        extra_reserved_tokens=0,
+    ):
         query = self.get_last_user_input(conversation_messages)
         semantic_context = (
             self.semantic_memory.format_for_prompt(query)
@@ -78,7 +88,15 @@ class ContextBuilder:
             message.to_provider_dict()
             for message in conversation_messages
         ]
-        return self.policy.fit(system_message, provider_messages)
+
+        if lmstudio_compat:
+            provider_messages = self.to_lmstudio_compatible_messages(provider_messages)
+
+        return self.policy.fit(
+            system_message,
+            provider_messages,
+            extra_reserved_tokens=extra_reserved_tokens,
+        )
 
     def get_last_user_input(self, conversation_messages):
         for message in reversed(conversation_messages):
@@ -86,3 +104,32 @@ class ContextBuilder:
                 return message.content
 
         return ""
+
+    def to_lmstudio_compatible_messages(self, messages):
+        """Evita roles tool en plantillas Jinja de LM Studio poco tolerantes."""
+        compatible_messages = []
+
+        for message in messages:
+            role = message.get("role")
+            content = message.get("content")
+
+            if role == "tool":
+                tool_name = message.get("name") or "tool"
+                compatible_messages.append({
+                    "role": "user",
+                    "content": (
+                        f"Resultado de la herramienta {tool_name}:\n"
+                        f"{content or ''}\n\n"
+                        "Usa este resultado para responder al usuario."
+                    ),
+                })
+                continue
+
+            clean_message = {
+                "role": role,
+                "content": content or "",
+            }
+
+            compatible_messages.append(clean_message)
+
+        return compatible_messages

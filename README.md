@@ -8,12 +8,13 @@ El objetivo del proyecto es evolucionar desde un chat local simple hacia un copi
 
 - Chat local con LM Studio usando API compatible con OpenAI.
 - Streaming de respuestas en tiempo real.
-- Historial de conversacion en memoria durante la sesion.
+- Historial de conversacion persistido en JSON local.
 - Tools manuales desde consola.
 - Tool calling automatico con confirmacion del usuario antes de ejecutar acciones.
 - Tools con argumentos JSON.
 - Primeras integraciones Windows y sistema.
 - Memoria persistente simple en JSON local.
+- Arquitectura backend modular inicial con configuracion, providers, prompts, contexto y conversaciones.
 
 ## Estructura
 
@@ -23,8 +24,14 @@ ia-local-agent/
 |-- docs/
 |-- rag/
 |-- src/
+|   |-- cli.py
 |   |-- agent.py
+|   |-- config.py
+|   |-- context.py
+|   |-- conversations.py
 |   |-- memory.py
+|   |-- prompts.py
+|   |-- providers.py
 |   `-- tools.py
 |-- ui/
 |-- venv/
@@ -85,6 +92,12 @@ Desde la raiz del proyecto:
 
 ```powershell
 venv\Scripts\python.exe src\agent.py
+```
+
+Entrada CLI equivalente:
+
+```powershell
+venv\Scripts\python.exe src\cli.py
 ```
 
 Para salir:
@@ -148,6 +161,48 @@ Comandos disponibles:
 ```
 
 Las memorias guardadas se inyectan en el prompt del sistema al iniciar y antes de cada respuesta del modelo.
+
+## Arquitectura Backend
+
+El backend esta separado en capas:
+
+```text
+CLI / futura UI
+    -> LocalAgent
+        -> ContextBuilder
+        -> PromptManager
+        -> ConversationManager
+        -> ProviderRegistry / LLMProvider
+        -> Tools
+        -> Memory
+```
+
+Modulos principales:
+
+- `config.py`: configuracion global desde `.env` y variables de entorno.
+- `providers.py`: interfaz `LLMProvider`, `LMStudioProvider` y registro de providers.
+- `prompts.py`: renderizado del system prompt.
+- `conversations.py`: mensajes, conversaciones y persistencia JSON.
+- `context.py`: conteo aproximado de tokens y sliding window.
+- `agent.py`: orquestador del turno conversacional.
+- `cli.py`: entrada de consola.
+
+Variables `.env` soportadas:
+
+```text
+APP_ENV=dev
+DEFAULT_PROVIDER=lmstudio
+DEFAULT_MODEL=qwen/qwen3.5-9b
+LMSTUDIO_BASE_URL=http://127.0.0.1:1234/v1
+LMSTUDIO_API_KEY=lm-studio
+LLM_TEMPERATURE=0.7
+MAX_CONTEXT_TOKENS=4096
+RESERVED_RESPONSE_TOKENS=1024
+TOOLS_REQUIRE_CONFIRMATION=true
+CONVERSATIONS_PATH=data/conversations.json
+MEMORY_PATH=data/memory.json
+LOG_LEVEL=INFO
+```
 
 ## Tools Disponibles
 

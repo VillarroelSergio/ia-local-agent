@@ -2,39 +2,42 @@
 
 Agente IA local para Windows usando modelos open source servidos desde LM Studio y una interfaz Python por consola.
 
-El objetivo del proyecto es evolucionar desde un chat local simple hacia un copiloto privado con tools, memoria, RAG, automatizacion Windows, voz y UI propia.
+La meta es evolucionar desde un chat local hacia un copiloto privado para Windows: con tools, memoria, RAG local, automatizacion, voz y UI propia.
 
 ## Estado Actual
 
-- Chat local con LM Studio usando API compatible con OpenAI.
-- Streaming de respuestas en tiempo real.
-- Historial de conversacion persistido en SQLite local.
+- Chat local con LM Studio mediante API compatible con OpenAI.
+- Streaming de respuestas en consola.
+- Historial persistente en SQLite.
+- Tool calling automatico con confirmacion del usuario.
 - Tools manuales desde consola.
-- Tool calling automatico con confirmacion del usuario antes de ejecutar acciones.
-- Tools con argumentos JSON.
-- Primeras integraciones Windows y sistema.
-- Memoria persistente y semantica local con ChromaDB.
-- Arquitectura backend modular inicial con configuracion, providers, prompts, contexto y conversaciones.
+- Memoria persistente y semantica con ChromaDB.
+- Embeddings locales reales con `sentence-transformers`.
+- Gestion de memoria largo plazo: recuerdos explicitos, busqueda, estadisticas y reindexado.
+- Backend modular: providers, prompts, contexto, conversaciones, memoria, tools y orquestacion inicial.
 
 ## Estructura
 
 ```text
 ia-local-agent/
-|-- data/
+|-- data/                    # Datos locales ignorados por Git
 |-- docs/
 |-- rag/
 |-- src/
-|   |-- cli.py
-|   |-- agent.py
-|   |-- config.py
-|   |-- context.py
-|   |-- conversations.py
-|   |-- prompts.py
-|   |-- providers.py
-|   |-- semantic_memory.py
-|   `-- tools.py
+|   |-- agent.py             # Orquestador principal
+|   |-- cli.py               # Entrada CLI
+|   |-- config.py            # Configuracion
+|   |-- context.py           # Construccion y recorte de contexto
+|   |-- conversations.py     # SQLite e historial
+|   |-- prompts.py           # System prompt
+|   |-- providers.py         # Providers LLM
+|   |-- semantic_memory.py   # ChromaDB + embeddings
+|   |-- tools.py             # Fachada de tools
+|   |-- tooling/             # Registry, permisos, auditoria, ejecucion
+|   |-- tools_catalog/       # Catalogo de tools locales
+|   `-- orchestration/       # Workflows agenticos iniciales
 |-- ui/
-|-- venv/
+|-- requirements.txt
 `-- README.md
 ```
 
@@ -42,10 +45,10 @@ ia-local-agent/
 
 - Windows.
 - Python.
-- LM Studio con el servidor local activado.
-- Modelo cargado en LM Studio.
+- LM Studio con servidor local activado.
+- Un modelo cargado en LM Studio.
 
-Librerias usadas actualmente:
+Dependencias principales:
 
 ```text
 openai
@@ -54,14 +57,13 @@ chromadb
 sentence-transformers
 ```
 
-Tambien estan previstas para fases futuras:
+Instalacion:
 
-```text
-langchain
-pyautogui
+```powershell
+venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-Nota: actualmente existe una carpeta llamada `requeriments.txt`. Lo correcto para el futuro sera tener un archivo `requirements.txt`.
+Nota: existe una carpeta antigua llamada `requeriments.txt`; las dependencias actuales viven en `requirements.txt`.
 
 ## Configuracion LM Studio
 
@@ -92,13 +94,13 @@ Batch Size: 512-1024
 Desde la raiz del proyecto:
 
 ```powershell
-venv\Scripts\python.exe src\agent.py
+venv\Scripts\python.exe src\cli.py
 ```
 
-Entrada CLI equivalente:
+Entrada equivalente:
 
 ```powershell
-venv\Scripts\python.exe src\cli.py
+venv\Scripts\python.exe src\agent.py
 ```
 
 Para salir:
@@ -107,7 +109,7 @@ Para salir:
 salir
 ```
 
-## Uso
+## Uso Basico
 
 Puedes chatear normalmente:
 
@@ -125,40 +127,17 @@ Confirmar? (s/n):
 
 Solo se ejecuta si respondes `s`, `si`, `y` o `yes`.
 
-## Tools Manuales
+## Memoria
 
-Tambien puedes ejecutar tools directamente desde la consola:
+La memoria local usa:
 
-```text
-/tool notepad
-/tool calc
-/tool sistema
-```
+- SQLite para historial conversacional: `data/conversations.sqlite3`
+- ChromaDB para memoria semantica: `data/chroma/`
+- Cache local del modelo de embeddings: `data/hf_cache/`
 
-Tools con argumentos:
+Estos datos estan ignorados por Git porque pueden contener informacion privada.
 
-```text
-/tool get_running_processes {"limit": 10}
-/tool search_files {"path": ".", "pattern": "*.md", "limit": 5}
-/tool run_powershell {"command": "Get-Date"}
-/tool list_directory {"path": ".", "limit": 20}
-/tool read_text_file {"path": "README.md", "max_chars": 2000}
-/tool get_clipboard
-/tool set_clipboard {"text": "hola desde el agente"}
-/tool open_url {"url": "https://example.com"}
-```
-
-## Memoria Persistente
-
-La memoria se guarda localmente en ChromaDB:
-
-```text
-data/chroma/
-```
-
-Este directorio esta ignorado por Git porque puede contener informacion privada del usuario.
-
-Comandos disponibles:
+Comandos:
 
 ```text
 /remember El usuario prefiere respuestas breves en espanol.
@@ -169,38 +148,109 @@ Comandos disponibles:
 /forget id_de_memoria
 ```
 
-Las memorias guardadas se inyectan en el prompt del sistema al iniciar y antes de cada respuesta del modelo.
-
-La memoria semantica usa ChromaDB con embeddings locales. Por defecto intenta
-usar `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` mediante
-`sentence-transformers`; si esa libreria o el modelo no estan disponibles, cae
-temporalmente al embedding hash local para mantener el agente operativo.
-
-## Arquitectura Backend
-
-El backend esta separado en capas:
+Flujo de memoria:
 
 ```text
-CLI / futura UI
-    -> LocalAgent
-        -> ContextBuilder
-        -> PromptManager
-        -> ConversationManager
-        -> ProviderRegistry / LLMProvider
-        -> Tools
-        -> Memory
+Usuario pregunta algo
+-> Se busca memoria relevante en ChromaDB
+-> Se carga historial reciente desde SQLite
+-> Todo se inyecta en el prompt
+-> LM Studio responde con mas contexto
 ```
 
-Modulos principales:
+Embeddings:
 
-- `config.py`: configuracion global desde `.env` y variables de entorno.
-- `providers.py`: interfaz `LLMProvider`, `LMStudioProvider` y registro de providers.
-- `prompts.py`: renderizado del system prompt.
-- `conversations.py`: mensajes, conversaciones y persistencia SQLite.
-- `context.py`: conteo aproximado de tokens, sliding window e inyeccion de memoria semantica.
-- `semantic_memory.py`: memoria semantica local sobre ChromaDB.
-- `agent.py`: orquestador del turno conversacional.
-- `cli.py`: entrada de consola.
+- Por defecto usa `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`.
+- Si `sentence-transformers` o el modelo no estan disponibles, cae al embedding hash local para mantener el agente operativo.
+- Al cambiar de embedding, ejecuta `/memory_rebuild` para reindexar el historial guardado.
+
+## Tools
+
+Las tools estan registradas mediante `ToolRegistry` y se exponen al modelo con schemas OpenAI-compatible. Tambien pueden ejecutarse manualmente desde consola:
+
+```text
+/tool notepad
+/tool calc
+/tool sistema
+/tool get_running_processes {"limit": 10}
+/tool search_files {"path": ".", "pattern": "*.md", "limit": 5}
+/tool run_powershell {"command": "Get-Date"}
+/tool list_directory {"path": ".", "limit": 20}
+/tool read_text_file {"path": "README.md", "max_chars": 2000}
+/tool get_clipboard
+/tool set_clipboard {"text": "hola desde el agente"}
+/tool open_url {"url": "https://example.com"}
+```
+
+Tools disponibles:
+
+| Tool | Uso |
+| --- | --- |
+| `open_notepad` | Abre el Bloc de notas |
+| `open_calculator` | Abre la calculadora |
+| `open_application` | Abre apps permitidas por allowlist |
+| `get_system_info` | Muestra informacion basica del sistema |
+| `get_running_processes` | Lista procesos activos |
+| `search_files` | Busca archivos por patron |
+| `list_directory` | Lista archivos y carpetas |
+| `read_text_file` | Lee archivos de texto UTF-8 |
+| `get_clipboard` | Lee el portapapeles |
+| `set_clipboard` | Escribe en el portapapeles |
+| `get_mouse_position` | Devuelve posicion del raton |
+| `get_screen_size` | Devuelve tamano de pantalla |
+| `move_mouse` | Mueve el raton |
+| `click_mouse` | Hace click |
+| `press_key` | Pulsa una tecla |
+| `hotkey` | Pulsa combinaciones de teclas |
+| `type_text` | Escribe texto |
+| `open_url` | Abre una URL |
+| `run_powershell` | Ejecuta comandos PowerShell permitidos |
+
+Apps permitidas en `open_application`:
+
+```text
+notepad
+calculator
+explorer
+paint
+cmd
+powershell
+```
+
+Comandos permitidos en `run_powershell`:
+
+```text
+Get-Date
+Get-Process
+Get-Service
+Get-ComputerInfo
+Get-ChildItem
+Test-Path
+Where-Object
+Select-Object
+Sort-Object
+Measure-Object
+Format-Table
+Format-List
+```
+
+Por seguridad se bloquean tokens de composicion o redireccion como `;`, `&&`, `||`, `$(`, backticks, `>`, `>>` y `<`.
+
+Limites principales:
+
+| Recurso | Limite |
+| --- | --- |
+| PowerShell timeout | 15 segundos |
+| PowerShell command | 300 caracteres |
+| `get_running_processes` | 50 procesos |
+| `search_files` | 100 resultados |
+| `list_directory` | 100 elementos |
+| `read_text_file` | 12000 caracteres |
+| Clipboard | 8000 caracteres |
+| `type_text` | 500 caracteres |
+| `click_mouse` | 3 clicks |
+
+## Configuracion
 
 Variables `.env` soportadas:
 
@@ -224,255 +274,40 @@ LONG_TERM_MEMORY_ENABLED=true
 LOG_LEVEL=INFO
 ```
 
-## Tools Disponibles
+## Arquitectura
 
-Las tools estan registradas en `tools.py` mediante `ToolRegistry`. Cada tool
-define:
-
-- nombre canonico
-- aliases manuales
-- categoria
-- schema OpenAI-compatible
-- funcion ejecutora
-- limites de seguridad
-
-### open_notepad
-
-Abre el Bloc de notas de Windows.
-
-### open_calculator
-
-Abre la calculadora de Windows.
-
-### open_application
-
-Abre aplicaciones Windows permitidas por allowlist.
-
-Apps permitidas actualmente:
-
-- `notepad`
-- `calculator`
-- `explorer`
-- `paint`
-- `cmd`
-- `powershell`
-
-### get_system_info
-
-Devuelve informacion basica del sistema:
-
-- version de Windows
-- CPU
-- nucleos e hilos
-- RAM total y disponible
-
-### get_running_processes
-
-Lista procesos activos ordenados por uso de memoria.
-
-Argumentos:
-
-```json
-{
-  "limit": 15
-}
+```text
+CLI / futura UI
+    -> LocalAgent
+        -> ContextBuilder
+        -> PromptManager
+        -> ConversationManager
+        -> SemanticMemoryManager
+        -> ProviderRegistry / LLMProvider
+        -> ToolRegistry / ToolExecutor
 ```
 
-### search_files
+Modulos principales:
 
-Busca archivos dentro de una carpeta usando un patron glob.
-
-Argumentos:
-
-```json
-{
-  "path": ".",
-  "pattern": "*.py",
-  "limit": 20
-}
-```
-
-### list_directory
-
-Lista archivos y carpetas de una ruta.
-
-Argumentos:
-
-```json
-{
-  "path": ".",
-  "limit": 50
-}
-```
-
-### read_text_file
-
-Lee archivos de texto UTF-8 con limite de caracteres.
-
-Argumentos:
-
-```json
-{
-  "path": "README.md",
-  "max_chars": 12000
-}
-```
-
-### get_clipboard
-
-Lee texto del portapapeles.
-
-### set_clipboard
-
-Copia texto al portapapeles.
-
-Argumentos:
-
-```json
-{
-  "text": "texto a copiar"
-}
-```
-
-### get_mouse_position
-
-Devuelve la posicion actual del raton.
-
-### get_screen_size
-
-Devuelve el tamano de la pantalla principal.
-
-### move_mouse
-
-Mueve el raton a una coordenada de pantalla.
-
-Argumentos:
-
-```json
-{
-  "x": 500,
-  "y": 300,
-  "duration": 0.2
-}
-```
-
-### click_mouse
-
-Hace click con el raton.
-
-Argumentos:
-
-```json
-{
-  "button": "left",
-  "clicks": 1
-}
-```
-
-### press_key
-
-Pulsa una tecla.
-
-Argumentos:
-
-```json
-{
-  "key": "enter"
-}
-```
-
-### hotkey
-
-Pulsa una combinacion de teclas.
-
-Argumentos:
-
-```json
-{
-  "keys": ["ctrl", "c"]
-}
-```
-
-### type_text
-
-Escribe texto usando el teclado.
-
-Argumentos:
-
-```json
-{
-  "text": "Hola",
-  "interval": 0.02
-}
-```
-
-### open_url
-
-Abre una URL `http://` o `https://` en el navegador predeterminado.
-
-Argumentos:
-
-```json
-{
-  "url": "https://example.com"
-}
-```
-
-### run_powershell
-
-Ejecuta comandos PowerShell de inspeccion permitidos por allowlist y devuelve:
-
-- codigo de salida
-- stdout
-- stderr
-
-Argumentos:
-
-```json
-{
-  "command": "Get-Date",
-  "timeout": 10
-}
-```
-
-Por seguridad bloquea todo lo que no este permitido explicitamente.
-
-Comandos permitidos actualmente:
-
-- `Get-Date`
-- `Get-Process`
-- `Get-Service`
-- `Get-ComputerInfo`
-- `Get-ChildItem`
-- `Test-Path`
-- `Where-Object`
-- `Select-Object`
-- `Sort-Object`
-- `Measure-Object`
-- `Format-Table`
-- `Format-List`
-
-Tambien bloquea tokens de composicion o redireccion como `;`, `&&`, `||`, `$(`, backticks, `>`, `>>` y `<`.
-
-Limites actuales:
-
-- maximo 15 segundos por comando PowerShell
-- maximo 300 caracteres por comando PowerShell
-- maximo 50 procesos en `get_running_processes`
-- maximo 100 resultados en `search_files`
-- maximo 100 elementos en `list_directory`
-- maximo 12000 caracteres en `read_text_file`
-- maximo 8000 caracteres en clipboard
-- maximo 500 caracteres en `type_text`
-- maximo 3 clicks en `click_mouse`
+- `config.py`: configuracion desde `.env` y variables de entorno.
+- `providers.py`: interfaz `LLMProvider`, `LMStudioProvider` y registro de providers.
+- `prompts.py`: renderizado del system prompt.
+- `conversations.py`: mensajes, conversaciones y persistencia SQLite.
+- `context.py`: recorte de contexto e inyeccion de memoria.
+- `semantic_memory.py`: memoria semantica sobre ChromaDB.
+- `tooling/`: registry, permisos, auditoria y ejecucion de tools.
+- `tools_catalog/`: definiciones de tools locales por dominio.
+- `orchestration/`: esqueleto para workflows agenticos.
+- `agent.py`: orquestador del turno conversacional.
+- `cli.py`: entrada de consola.
 
 ## Roadmap
 
-1. Mejorar seguridad y permisos de tools.
-2. Crear memoria persistente.
-3. Mejorar memoria con busqueda semantica.
+1. Mejorar seguridad y permisos de tools. En progreso: registry, permisos y auditoria ya separados.
+2. Crear memoria persistente. Hecho: SQLite para conversaciones y ChromaDB para memoria.
+3. Mejorar memoria con busqueda semantica. Hecho base: embeddings locales reales, busqueda y reindexado.
 4. Anadir RAG local sobre documentos.
-5. Integrar embeddings locales.
+5. Integrar embeddings locales. Hecho base con `sentence-transformers`.
 6. Automatizacion Windows avanzada.
 7. UI propia.
 8. Voz local con STT y TTS.

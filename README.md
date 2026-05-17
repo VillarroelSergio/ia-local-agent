@@ -8,12 +8,12 @@ El objetivo del proyecto es evolucionar desde un chat local simple hacia un copi
 
 - Chat local con LM Studio usando API compatible con OpenAI.
 - Streaming de respuestas en tiempo real.
-- Historial de conversacion persistido en JSON local.
+- Historial de conversacion persistido en SQLite local.
 - Tools manuales desde consola.
 - Tool calling automatico con confirmacion del usuario antes de ejecutar acciones.
 - Tools con argumentos JSON.
 - Primeras integraciones Windows y sistema.
-- Memoria persistente simple en JSON local.
+- Memoria persistente y semantica local con ChromaDB.
 - Arquitectura backend modular inicial con configuracion, providers, prompts, contexto y conversaciones.
 
 ## Estructura
@@ -29,9 +29,9 @@ ia-local-agent/
 |   |-- config.py
 |   |-- context.py
 |   |-- conversations.py
-|   |-- memory.py
 |   |-- prompts.py
 |   |-- providers.py
+|   |-- semantic_memory.py
 |   `-- tools.py
 |-- ui/
 |-- venv/
@@ -50,13 +50,13 @@ Librerias usadas actualmente:
 ```text
 openai
 psutil
+chromadb
 ```
 
-Tambien estan previstas o instaladas para fases futuras:
+Tambien estan previstas para fases futuras:
 
 ```text
 langchain
-chromadb
 pyautogui
 ```
 
@@ -140,17 +140,22 @@ Tools con argumentos:
 /tool get_running_processes {"limit": 10}
 /tool search_files {"path": ".", "pattern": "*.md", "limit": 5}
 /tool run_powershell {"command": "Get-Date"}
+/tool list_directory {"path": ".", "limit": 20}
+/tool read_text_file {"path": "README.md", "max_chars": 2000}
+/tool get_clipboard
+/tool set_clipboard {"text": "hola desde el agente"}
+/tool open_url {"url": "https://example.com"}
 ```
 
 ## Memoria Persistente
 
-La memoria se guarda localmente en:
+La memoria se guarda localmente en ChromaDB:
 
 ```text
-data/memory.json
+data/chroma/
 ```
 
-Este archivo esta ignorado por Git porque puede contener informacion privada del usuario.
+Este directorio esta ignorado por Git porque puede contener informacion privada del usuario.
 
 Comandos disponibles:
 
@@ -182,8 +187,9 @@ Modulos principales:
 - `config.py`: configuracion global desde `.env` y variables de entorno.
 - `providers.py`: interfaz `LLMProvider`, `LMStudioProvider` y registro de providers.
 - `prompts.py`: renderizado del system prompt.
-- `conversations.py`: mensajes, conversaciones y persistencia JSON.
-- `context.py`: conteo aproximado de tokens y sliding window.
+- `conversations.py`: mensajes, conversaciones y persistencia SQLite.
+- `context.py`: conteo aproximado de tokens, sliding window e inyeccion de memoria semantica.
+- `semantic_memory.py`: memoria semantica local sobre ChromaDB.
 - `agent.py`: orquestador del turno conversacional.
 - `cli.py`: entrada de consola.
 
@@ -199,12 +205,24 @@ LLM_TEMPERATURE=0.7
 MAX_CONTEXT_TOKENS=4096
 RESERVED_RESPONSE_TOKENS=1024
 TOOLS_REQUIRE_CONFIRMATION=true
-CONVERSATIONS_PATH=data/conversations.json
-MEMORY_PATH=data/memory.json
+CONVERSATIONS_PATH=data/conversations.sqlite3
+CHROMA_PATH=data/chroma
+SEMANTIC_MEMORY_ENABLED=true
+SEMANTIC_MEMORY_RESULTS=5
 LOG_LEVEL=INFO
 ```
 
 ## Tools Disponibles
+
+Las tools estan registradas en `tools.py` mediante `ToolRegistry`. Cada tool
+define:
+
+- nombre canonico
+- aliases manuales
+- categoria
+- schema OpenAI-compatible
+- funcion ejecutora
+- limites de seguridad
 
 ### open_notepad
 
@@ -213,6 +231,19 @@ Abre el Bloc de notas de Windows.
 ### open_calculator
 
 Abre la calculadora de Windows.
+
+### open_application
+
+Abre aplicaciones Windows permitidas por allowlist.
+
+Apps permitidas actualmente:
+
+- `notepad`
+- `calculator`
+- `explorer`
+- `paint`
+- `cmd`
+- `powershell`
 
 ### get_system_info
 
@@ -246,6 +277,132 @@ Argumentos:
   "path": ".",
   "pattern": "*.py",
   "limit": 20
+}
+```
+
+### list_directory
+
+Lista archivos y carpetas de una ruta.
+
+Argumentos:
+
+```json
+{
+  "path": ".",
+  "limit": 50
+}
+```
+
+### read_text_file
+
+Lee archivos de texto UTF-8 con limite de caracteres.
+
+Argumentos:
+
+```json
+{
+  "path": "README.md",
+  "max_chars": 12000
+}
+```
+
+### get_clipboard
+
+Lee texto del portapapeles.
+
+### set_clipboard
+
+Copia texto al portapapeles.
+
+Argumentos:
+
+```json
+{
+  "text": "texto a copiar"
+}
+```
+
+### get_mouse_position
+
+Devuelve la posicion actual del raton.
+
+### get_screen_size
+
+Devuelve el tamano de la pantalla principal.
+
+### move_mouse
+
+Mueve el raton a una coordenada de pantalla.
+
+Argumentos:
+
+```json
+{
+  "x": 500,
+  "y": 300,
+  "duration": 0.2
+}
+```
+
+### click_mouse
+
+Hace click con el raton.
+
+Argumentos:
+
+```json
+{
+  "button": "left",
+  "clicks": 1
+}
+```
+
+### press_key
+
+Pulsa una tecla.
+
+Argumentos:
+
+```json
+{
+  "key": "enter"
+}
+```
+
+### hotkey
+
+Pulsa una combinacion de teclas.
+
+Argumentos:
+
+```json
+{
+  "keys": ["ctrl", "c"]
+}
+```
+
+### type_text
+
+Escribe texto usando el teclado.
+
+Argumentos:
+
+```json
+{
+  "text": "Hola",
+  "interval": 0.02
+}
+```
+
+### open_url
+
+Abre una URL `http://` o `https://` en el navegador predeterminado.
+
+Argumentos:
+
+```json
+{
+  "url": "https://example.com"
 }
 ```
 
@@ -291,6 +448,11 @@ Limites actuales:
 - maximo 300 caracteres por comando PowerShell
 - maximo 50 procesos en `get_running_processes`
 - maximo 100 resultados en `search_files`
+- maximo 100 elementos en `list_directory`
+- maximo 12000 caracteres en `read_text_file`
+- maximo 8000 caracteres en clipboard
+- maximo 500 caracteres en `type_text`
+- maximo 3 clicks en `click_mouse`
 
 ## Roadmap
 

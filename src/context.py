@@ -48,15 +48,27 @@ class SlidingWindowPolicy:
 class ContextBuilder:
     """Compone el contexto final con prompt, historial y futuras inyecciones."""
 
-    def __init__(self, prompt_manager, policy, settings):
+    def __init__(self, prompt_manager, policy, settings, semantic_memory=None):
         self.prompt_manager = prompt_manager
         self.policy = policy
         self.settings = settings
+        self.semantic_memory = semantic_memory
 
     def build_messages(self, conversation_messages):
+        query = self.get_last_user_input(conversation_messages)
+        semantic_context = (
+            self.semantic_memory.format_for_prompt(query)
+            if self.semantic_memory is not None else None
+        )
+        memory_context = (
+            self.semantic_memory.format_explicit_for_prompt()
+            if self.semantic_memory is not None else None
+        )
         system_prompt = self.prompt_manager.render_system_prompt(
             provider=self.settings.default_provider,
             model=self.settings.default_model,
+            memory_context=memory_context,
+            semantic_context=semantic_context,
         )
         system_message = {
             "role": "system",
@@ -67,3 +79,10 @@ class ContextBuilder:
             for message in conversation_messages
         ]
         return self.policy.fit(system_message, provider_messages)
+
+    def get_last_user_input(self, conversation_messages):
+        for message in reversed(conversation_messages):
+            if message.role == "user" and message.content:
+                return message.content
+
+        return ""

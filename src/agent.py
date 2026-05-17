@@ -1,3 +1,10 @@
+"""Agente IA local por consola.
+
+Conecta LM Studio mediante la API compatible con OpenAI, mantiene el historial
+de conversacion, gestiona streaming, tool calling con confirmacion del usuario
+y memoria persistente.
+"""
+
 import json
 
 from openai import OpenAI
@@ -17,6 +24,7 @@ client = OpenAI(
 )
 
 def build_system_prompt():
+    """Construye el prompt del sistema incluyendo la memoria persistente."""
     return f"""
         Eres un asistente IA local integrado en Windows.
         Ayudas al usuario con tareas diarias y desarrollo.
@@ -37,10 +45,16 @@ messages = [
 
 
 def refresh_system_prompt():
+    """Actualiza el mensaje system con las memorias guardadas mas recientes."""
     messages[0]["content"] = build_system_prompt()
 
 
 def stream_response(use_tools=True):
+    """Solicita una respuesta al modelo y la imprime en streaming.
+
+    Cuando use_tools es True, el modelo puede devolver tool calls. En streaming
+    esos tool calls llegan fragmentados, asi que se reconstruyen por indice.
+    """
     request = {
         "model": MODEL,
         "messages": messages,
@@ -103,6 +117,7 @@ def stream_response(use_tools=True):
 
 
 def parse_tool_arguments(tool_call):
+    """Convierte los argumentos JSON de una tool call en un diccionario."""
     raw_arguments = tool_call["function"].get("arguments") or "{}"
 
     try:
@@ -123,6 +138,7 @@ def parse_tool_arguments(tool_call):
 
 
 def confirm_tool(tool_name, arguments):
+    """Pide confirmacion antes de ejecutar una tool solicitada por el modelo."""
     print(f"\nEl modelo quiere ejecutar '{tool_name}' con argumentos:")
     print(json.dumps(arguments, indent=2, ensure_ascii=False))
     answer = input("Confirmar? (s/n): ")
@@ -130,6 +146,7 @@ def confirm_tool(tool_name, arguments):
 
 
 def run_confirmed_tool_call(tool_call):
+    """Valida, confirma y ejecuta una tool call del modelo."""
     tool_name = tool_call["function"]["name"]
     arguments = parse_tool_arguments(tool_call)
 
@@ -143,6 +160,10 @@ def run_confirmed_tool_call(tool_call):
 
 
 def handle_memory_command(user_input):
+    """Gestiona comandos manuales de memoria.
+
+    Devuelve True si el input fue un comando de memoria y ya quedo resuelto.
+    """
     if user_input.startswith("/remember "):
         content = user_input.removeprefix("/remember ").strip()
         memory = remember(content)
@@ -174,6 +195,11 @@ def handle_memory_command(user_input):
 
 
 def chat_once():
+    """Procesa una interaccion completa de chat.
+
+    Si el modelo pide tools, se ejecutan con confirmacion y despues se hace una
+    segunda llamada al modelo para que responda con el resultado.
+    """
     refresh_system_prompt()
     assistant_message, tool_calls = stream_response(use_tools=True)
 
@@ -210,6 +236,7 @@ def chat_once():
 
 
 def main():
+    """Bucle principal de consola del agente."""
     print("Agente IA local iniciado. Escribe 'salir' para terminar.")
     print("Tools manuales: /tool notepad, /tool calc, /tool sistema")
     print("Memoria: /remember texto, /memories, /forget id")

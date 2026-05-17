@@ -1,3 +1,10 @@
+"""Tools locales que el agente puede ejecutar en Windows.
+
+Las funciones de este modulo forman la frontera entre el modelo y el sistema
+operativo. Por eso devuelven datos estructurados, validan argumentos y aplican
+limites de seguridad antes de tocar Windows.
+"""
+
 import platform
 import subprocess
 from pathlib import Path
@@ -38,6 +45,7 @@ BLOCKED_POWERSHELL_TOKENS = [
 
 
 def clamp_int(value, default, minimum, maximum):
+    """Convierte un valor a entero y lo limita dentro de un rango seguro."""
     if value is None:
         return default
 
@@ -50,16 +58,19 @@ def clamp_int(value, default, minimum, maximum):
 
 
 def open_notepad():
+    """Abre el Bloc de notas de Windows."""
     subprocess.Popen(["notepad.exe"])
     return "Notepad abierto."
 
 
 def open_calculator():
+    """Abre la calculadora de Windows."""
     subprocess.Popen(["calc.exe"])
     return "Calculadora abierta."
 
 
 def get_system_info():
+    """Devuelve informacion basica del sistema, CPU y memoria RAM."""
     memory = psutil.virtual_memory()
 
     return {
@@ -77,6 +88,7 @@ def get_system_info():
 
 
 def get_running_processes(limit=15):
+    """Lista procesos activos ordenados por uso de memoria."""
     limit = clamp_int(limit, default=15, minimum=1, maximum=MAX_PROCESS_LIMIT)
     processes = []
 
@@ -94,6 +106,11 @@ def get_running_processes(limit=15):
 
 
 def search_files(path, pattern, limit=20):
+    """Busca archivos en una carpeta usando un patron glob simple.
+
+    El patron se limita a nombres de archivo, como *.py o *.md. No se aceptan
+    separadores de ruta dentro del patron para mantener la busqueda predecible.
+    """
     limit = clamp_int(limit, default=20, minimum=1, maximum=MAX_SEARCH_LIMIT)
 
     if not isinstance(path, str) or not path.strip():
@@ -139,6 +156,11 @@ def search_files(path, pattern, limit=20):
 
 
 def get_powershell_command_names(command):
+    """Extrae los nombres de comandos usados en una cadena PowerShell.
+
+    Solo separa por pipes. La validacion de tokens peligrosos ocurre antes de
+    ejecutar el comando en validate_powershell_command.
+    """
     names = []
 
     for segment in command.split("|"):
@@ -154,6 +176,11 @@ def get_powershell_command_names(command):
 
 
 def validate_powershell_command(command):
+    """Valida que un comando PowerShell sea de inspeccion y este permitido.
+
+    La estrategia es allowlist: cualquier comando que no aparezca en
+    ALLOWED_POWERSHELL_COMMANDS queda bloqueado por defecto.
+    """
     if not isinstance(command, str) or not command.strip():
         return "El comando debe ser texto no vacio."
 
@@ -179,6 +206,7 @@ def validate_powershell_command(command):
 
 
 def run_powershell(command, timeout=10):
+    """Ejecuta un comando PowerShell permitido y devuelve su salida."""
     timeout = clamp_int(
         timeout,
         default=10,
@@ -337,6 +365,11 @@ TOOL_SCHEMAS = [
 
 
 def run_tool(name, arguments=None):
+    """Ejecuta una tool registrada por nombre con argumentos opcionales.
+
+    Esta funcion es el punto unico de entrada desde agent.py. Captura errores de
+    argumentos y ejecucion para devolverlos como datos, sin romper el chat.
+    """
     tool = TOOLS.get(name)
 
     if tool is None:

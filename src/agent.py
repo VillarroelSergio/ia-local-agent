@@ -11,17 +11,17 @@ try:
     from config import get_settings
     from context import ApproxTokenCounter, ContextBuilder, SlidingWindowPolicy
     from conversations import ConversationManager, ConversationStore, Message
-    from memory import forget, load_memories, remember
     from prompts import PromptManager
     from providers import LLMRequest, ProviderError, build_provider_registry
+    from semantic_memory import SemanticMemoryManager
     from tools import TOOL_SCHEMAS, run_tool
 except ModuleNotFoundError:
     from src.config import get_settings
     from src.context import ApproxTokenCounter, ContextBuilder, SlidingWindowPolicy
     from src.conversations import ConversationManager, ConversationStore, Message
-    from src.memory import forget, load_memories, remember
     from src.prompts import PromptManager
     from src.providers import LLMRequest, ProviderError, build_provider_registry
+    from src.semantic_memory import SemanticMemoryManager
     from src.tools import TOOL_SCHEMAS, run_tool
 
 
@@ -33,6 +33,11 @@ class LocalAgent:
         self.providers = build_provider_registry(self.settings)
         self.provider = self.providers.get(self.settings.default_provider)
         self.prompt_manager = PromptManager()
+        self.semantic_memory = SemanticMemoryManager(
+            path=self.settings.chroma_path,
+            enabled=self.settings.semantic_memory_enabled,
+            max_results=self.settings.semantic_memory_results,
+        )
         self.conversations = ConversationManager(
             ConversationStore(self.settings.conversations_path)
         )
@@ -44,6 +49,7 @@ class LocalAgent:
                 reserved_response_tokens=self.settings.reserved_response_tokens,
             ),
             settings=self.settings,
+            semantic_memory=self.semantic_memory,
         )
 
     def stream_response(self, use_tools=True):
@@ -156,12 +162,12 @@ class LocalAgent:
         """Gestiona comandos manuales de memoria."""
         if user_input.startswith("/remember "):
             content = user_input.removeprefix("/remember ").strip()
-            memory = remember(content)
+            memory = self.semantic_memory.remember(content)
             print("\nMemoria:", memory)
             return True
 
         if user_input == "/memories":
-            memories = load_memories()
+            memories = self.semantic_memory.list_memories()
             print("\nMemorias:")
 
             if not memories:
@@ -175,7 +181,7 @@ class LocalAgent:
 
         if user_input.startswith("/forget "):
             memory_id = user_input.removeprefix("/forget ").strip()
-            result = forget(memory_id)
+            result = self.semantic_memory.forget(memory_id)
             print("\nMemoria:", result)
             return True
 
@@ -241,12 +247,22 @@ class LocalAgent:
 
         try:
             self.chat_once()
+            self.index_new_conversation_messages(history_length)
         except ProviderError:
-            self.conversations.remove_messages_after(history_length)
+            removed_ids = self.conversations.remove_messages_after(history_length)
+            self.semantic_memory.delete_conversation_messages(removed_ids)
             raise
         except Exception:
-            self.conversations.remove_messages_after(history_length)
+            removed_ids = self.conversations.remove_messages_after(history_length)
+            self.semantic_memory.delete_conversation_messages(removed_ids)
             raise
+
+    def index_new_conversation_messages(self, history_length):
+        """Indexa en Chroma los mensajes nuevos de un turno completado."""
+        messages = self.conversations.get_messages()
+
+        for message in messages[history_length:]:
+            self.semantic_memory.add_conversation_message(message)
 
 
 def main():

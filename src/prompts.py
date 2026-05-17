@@ -1,10 +1,5 @@
 """Gestion centralizada de prompts del agente."""
 
-try:
-    from memory import format_memories_for_prompt
-except ModuleNotFoundError:
-    from src.memory import format_memories_for_prompt
-
 
 DEFAULT_SYSTEM_TEMPLATE = """
 Eres un asistente IA local integrado en Windows.
@@ -17,6 +12,9 @@ Modelo activo: {model}
 
 Memoria persistente relevante del usuario:
 {memory_context}
+
+Memoria semantica recuperada para este turno:
+{semantic_context}
 """.strip()
 
 
@@ -27,11 +25,20 @@ class PromptManager:
         self.template = template or DEFAULT_SYSTEM_TEMPLATE
         self.version = version
 
-    def render_system_prompt(self, *, provider, model, memory_context=None, extra_context=None):
+    def render_system_prompt(
+        self,
+        *,
+        provider,
+        model,
+        memory_context=None,
+        semantic_context=None,
+        extra_context=None,
+    ):
         context = {
             "provider": provider,
             "model": model,
-            "memory_context": memory_context or format_memories_for_prompt(),
+            "memory_context": memory_context or "No hay memoria persistente guardada todavia.",
+            "semantic_context": semantic_context or "No hay memoria semantica relevante.",
         }
 
         if extra_context:

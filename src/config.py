@@ -72,7 +72,9 @@ class Settings:
     reserved_response_tokens: int
     tools_require_confirmation: bool
     conversations_path: Path
-    memory_path: Path
+    chroma_path: Path
+    semantic_memory_enabled: bool
+    semantic_memory_results: int
     log_level: str
 
 
@@ -90,7 +92,9 @@ def get_settings():
         max_context_tokens=env_int("MAX_CONTEXT_TOKENS", 4096),
         reserved_response_tokens=env_int("RESERVED_RESPONSE_TOKENS", 1024),
         tools_require_confirmation=env_bool("TOOLS_REQUIRE_CONFIRMATION", True),
-        conversations_path=PROJECT_ROOT / os.getenv("CONVERSATIONS_PATH", "data/conversations.json"),
-        memory_path=PROJECT_ROOT / os.getenv("MEMORY_PATH", "data/memory.json"),
+        conversations_path=PROJECT_ROOT / os.getenv("CONVERSATIONS_PATH", "data/conversations.sqlite3"),
+        chroma_path=PROJECT_ROOT / os.getenv("CHROMA_PATH", "data/chroma"),
+        semantic_memory_enabled=env_bool("SEMANTIC_MEMORY_ENABLED", True),
+        semantic_memory_results=env_int("SEMANTIC_MEMORY_RESULTS", 5),
         log_level=os.getenv("LOG_LEVEL", "INFO"),
     )

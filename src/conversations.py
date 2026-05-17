@@ -1,7 +1,8 @@
-"""Gestion de sesiones y conversaciones."""
+"""Gestion de sesiones y conversaciones con persistencia SQLite."""
 
 import json
-from dataclasses import asdict, dataclass, field
+import sqlite3
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
@@ -17,6 +18,7 @@ class Message:
     tool_calls: list | None = None
     tool_call_id: str | None = None
     name: str | None = None
+    conversation_id: str | None = None
 
     def to_provider_dict(self):
         message = {
@@ -46,46 +48,177 @@ class Conversation:
     summary: str = ""
 
 
-class ConversationStore:
-    """Persistencia JSON simple para conversaciones.
-
-    La interfaz queda preparada para migrar a SQLite sin tocar el orquestador.
-    """
+class SQLiteConversationStore:
+    """Repositorio SQLite para conversaciones y mensajes."""
 
     def __init__(self, path):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.initialize()
+
+    def connect(self):
+        connection = sqlite3.connect(self.path)
+        connection.row_factory = sqlite3.Row
+        return connection
+
+    def initialize(self):
+        with self.connect() as connection:
+            connection.execute("""
+                CREATE TABLE IF NOT EXISTS conversations (
+                    id TEXT PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    summary TEXT NOT NULL DEFAULT ''
+                )
+            """)
+            connection.execute("""
+                CREATE TABLE IF NOT EXISTS messages (
+                    id TEXT PRIMARY KEY,
+                    conversation_id TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    content TEXT,
+                    created_at TEXT NOT NULL,
+                    metadata_json TEXT NOT NULL DEFAULT '{}',
+                    tool_calls_json TEXT,
+                    tool_call_id TEXT,
+                    name TEXT,
+                    position INTEGER NOT NULL,
+                    FOREIGN KEY(conversation_id) REFERENCES conversations(id)
+                )
+            """)
+            connection.execute("""
+                CREATE INDEX IF NOT EXISTS idx_messages_conversation_position
+                ON messages(conversation_id, position)
+            """)
 
     def load_all(self):
-        if not self.path.exists():
-            return {}
-
-        try:
-            raw = json.loads(self.path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            return {}
-
         conversations = {}
 
-        for item in raw.get("conversations", []):
-            messages = [Message(**message) for message in item.get("messages", [])]
-            item["messages"] = messages
-            conversation = Conversation(**item)
-            conversations[conversation.id] = conversation
+        with self.connect() as connection:
+            conversation_rows = connection.execute(
+                "SELECT * FROM conversations ORDER BY updated_at"
+            ).fetchall()
+
+            for row in conversation_rows:
+                conversation = Conversation(
+                    id=row["id"],
+                    title=row["title"],
+                    created_at=row["created_at"],
+                    updated_at=row["updated_at"],
+                    summary=row["summary"],
+                    messages=[],
+                )
+                message_rows = connection.execute(
+                    """
+                    SELECT * FROM messages
+                    WHERE conversation_id = ?
+                    ORDER BY position
+                    """,
+                    (conversation.id,),
+                ).fetchall()
+
+                for message_row in message_rows:
+                    conversation.messages.append(self.row_to_message(message_row))
+
+                conversations[conversation.id] = conversation
 
         return conversations
 
+    def save_conversation(self, conversation):
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO conversations (id, title, created_at, updated_at, summary)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    title = excluded.title,
+                    updated_at = excluded.updated_at,
+                    summary = excluded.summary
+                """,
+                (
+                    conversation.id,
+                    conversation.title,
+                    conversation.created_at,
+                    conversation.updated_at,
+                    conversation.summary,
+                ),
+            )
+
+    def append_message(self, conversation, message):
+        message.conversation_id = conversation.id
+        position = len(conversation.messages) - 1
+
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT OR REPLACE INTO messages (
+                    id, conversation_id, role, content, created_at, metadata_json,
+                    tool_calls_json, tool_call_id, name, position
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    message.id,
+                    conversation.id,
+                    message.role,
+                    message.content,
+                    message.created_at,
+                    json.dumps(message.metadata, ensure_ascii=False),
+                    json.dumps(message.tool_calls, ensure_ascii=False)
+                    if message.tool_calls is not None else None,
+                    message.tool_call_id,
+                    message.name,
+                    position,
+                ),
+            )
+            connection.execute(
+                "UPDATE conversations SET updated_at = ? WHERE id = ?",
+                (conversation.updated_at, conversation.id),
+            )
+
+    def remove_messages_after(self, conversation, length):
+        removed_ids = [message.id for message in conversation.messages[length:]]
+        del conversation.messages[length:]
+        conversation.updated_at = datetime.now().isoformat(timespec="seconds")
+
+        if not removed_ids:
+            return []
+
+        placeholders = ", ".join("?" for _ in removed_ids)
+
+        with self.connect() as connection:
+            connection.execute(
+                f"DELETE FROM messages WHERE id IN ({placeholders})",
+                removed_ids,
+            )
+            connection.execute(
+                "UPDATE conversations SET updated_at = ? WHERE id = ?",
+                (conversation.updated_at, conversation.id),
+            )
+
+        return removed_ids
+
     def save_all(self, conversations):
-        payload = {
-            "conversations": [
-                asdict(conversation)
-                for conversation in conversations.values()
-            ]
-        }
-        self.path.write_text(
-            json.dumps(payload, indent=2, ensure_ascii=False),
-            encoding="utf-8",
+        for conversation in conversations.values():
+            self.save_conversation(conversation)
+
+    def row_to_message(self, row):
+        return Message(
+            id=row["id"],
+            conversation_id=row["conversation_id"],
+            role=row["role"],
+            content=row["content"],
+            created_at=row["created_at"],
+            metadata=json.loads(row["metadata_json"] or "{}"),
+            tool_calls=json.loads(row["tool_calls_json"])
+            if row["tool_calls_json"] else None,
+            tool_call_id=row["tool_call_id"],
+            name=row["name"],
         )
+
+
+ConversationStore = SQLiteConversationStore
 
 
 class ConversationManager:
@@ -94,13 +227,22 @@ class ConversationManager:
     def __init__(self, store):
         self.store = store
         self.conversations = store.load_all()
-        self.active_conversation = None
+        self.active_conversation = self.get_last_conversation()
+
+    def get_last_conversation(self):
+        if not self.conversations:
+            return None
+
+        return max(
+            self.conversations.values(),
+            key=lambda conversation: conversation.updated_at,
+        )
 
     def create_conversation(self, title="Nueva conversacion"):
         conversation = Conversation(title=title)
         self.conversations[conversation.id] = conversation
         self.active_conversation = conversation
-        self.save()
+        self.store.save_conversation(conversation)
         return conversation
 
     def get_active(self):
@@ -111,15 +253,16 @@ class ConversationManager:
 
     def append(self, message):
         conversation = self.get_active()
+        message.conversation_id = conversation.id
         conversation.messages.append(message)
         conversation.updated_at = datetime.now().isoformat(timespec="seconds")
-        self.save()
+        self.store.save_conversation(conversation)
+        self.store.append_message(conversation, message)
         return message
 
     def remove_messages_after(self, length):
         conversation = self.get_active()
-        del conversation.messages[length:]
-        self.save()
+        return self.store.remove_messages_after(conversation, length)
 
     def current_length(self):
         return len(self.get_active().messages)

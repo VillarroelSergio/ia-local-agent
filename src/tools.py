@@ -14,14 +14,14 @@ try:
     from tooling import ToolContext, ToolExecutor, ToolRegistry
     from tooling.audit import JsonlAuditLog
     from tooling.permissions import ToolPermissionPolicy
-    from tools_catalog import build_local_tool_definitions
+    from tools_catalog import build_local_tool_definitions, build_windows_os_tool_definitions
     from tools_catalog.rag import build_rag_tool_definitions
 except ModuleNotFoundError:
     from src.config import PROJECT_ROOT, get_settings
     from src.tooling import ToolContext, ToolExecutor, ToolRegistry
     from src.tooling.audit import JsonlAuditLog
     from src.tooling.permissions import ToolPermissionPolicy
-    from src.tools_catalog import build_local_tool_definitions
+    from src.tools_catalog import build_local_tool_definitions, build_windows_os_tool_definitions
     from src.tools_catalog.rag import build_rag_tool_definitions
 
 
@@ -29,6 +29,7 @@ def build_tool_registry():
     """Construye el registry centralizado con las tools locales."""
     registry = ToolRegistry()
     registry.register_many(build_local_tool_definitions())
+    registry.register_many(build_windows_os_tool_definitions())
     registry.register_many(build_rag_tool_definitions())
     return registry
 

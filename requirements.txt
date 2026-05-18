@@ -4,3 +4,9 @@ chromadb
 sentence-transformers
 pypdf
 pytest
+pillow
+mss
+pytesseract
+pyautogui
+keyboard
+pywin32; platform_system == "Windows"

@@ -9,6 +9,10 @@ REQUIRED_TOOLS = {
     "search_files",
     "run_powershell",
     "open_application",
+    "capture_screenshot",
+    "ocr_screen",
+    "get_active_window",
+    "list_monitors",
 }
 
 
@@ -31,3 +35,4 @@ def test_tool_registry_definitions_are_valid():
         RiskLevel.USER_CONFIRM,
         RiskLevel.READ_ONLY,
     }
+    assert registry.require("capture_screenshot").metadata.risk_level == RiskLevel.READ_ONLY

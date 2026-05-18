@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import ctypes
 from ctypes import wintypes
-from typing import Callable
+from dataclasses import asdict
 
 import psutil
 
@@ -15,6 +15,14 @@ from .security import OSScope, OSSecurityPolicy
 
 
 user32 = ctypes.windll.user32 if hasattr(ctypes, "windll") else None
+SW_HIDE = 0
+SW_SHOWNORMAL = 1
+SW_SHOWMINIMIZED = 2
+SW_SHOWMAXIMIZED = 3
+SW_RESTORE = 9
+SWP_NOZORDER = 0x0004
+SWP_SHOWWINDOW = 0x0040
+WM_CLOSE = 0x0010
 
 
 class WindowManager:
@@ -58,6 +66,145 @@ class WindowManager:
             executable_path=executable_path,
             app_id=process_name,
         )
+
+    def list_windows(self, *, include_empty_titles: bool = False, limit: int = 100) -> tuple[WindowInfo, ...]:
+        if user32 is None:
+            return ()
+        windows: list[WindowInfo] = []
+
+        EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+
+        def callback(handle, data):
+            if len(windows) >= limit:
+                return False
+            if not user32.IsWindowVisible(handle):
+                return True
+            title = self._get_window_title(int(handle))
+            if not include_empty_titles and not title.strip():
+                return True
+            info = self.get_window_info(int(handle))
+            decision = self.security.evaluate_window(info)
+            if decision.allowed:
+                windows.append(info)
+            return True
+
+        user32.EnumWindows(EnumWindowsProc(callback), 0)
+        return tuple(windows)
+
+    def find_windows(self, query: str, *, limit: int = 10) -> tuple[WindowInfo, ...]:
+        normalized = query.strip().lower()
+        if not normalized:
+            return ()
+        matches = []
+        for window in self.list_windows(include_empty_titles=False, limit=300):
+            haystack = " ".join(
+                part for part in (window.title, window.process_name, window.app_id) if part
+            ).lower()
+            if normalized in haystack:
+                matches.append(window)
+                if len(matches) >= limit:
+                    break
+        return tuple(matches)
+
+    def focus_window(self, handle: int | None = None, *, query: str | None = None) -> WindowInfo:
+        window = self._resolve_window(handle, query)
+        decision = self.security.evaluate_scope(OSScope.WINDOW_CONTROL, window)
+        if not decision.allowed:
+            raise PermissionError(decision.reason)
+        if user32 is None or window.handle is None:
+            raise RuntimeError("WinAPI no disponible para enfocar ventanas.")
+        if user32.IsIconic(window.handle):
+            user32.ShowWindow(window.handle, SW_RESTORE)
+        user32.SetForegroundWindow(window.handle)
+        return self.get_window_info(window.handle)
+
+    def move_window(self, handle: int | None = None, *, query: str | None = None, left: int, top: int) -> WindowInfo:
+        window = self._resolve_window(handle, query)
+        rect = window.rect
+        if rect is None:
+            raise ValueError("La ventana no tiene rectangulo disponible.")
+        return self.resize_window(window.handle, left=left, top=top, width=rect.width, height=rect.height)
+
+    def resize_window(
+        self,
+        handle: int | None = None,
+        *,
+        query: str | None = None,
+        left: int,
+        top: int,
+        width: int,
+        height: int,
+    ) -> WindowInfo:
+        window = self._resolve_window(handle, query)
+        decision = self.security.evaluate_scope(OSScope.WINDOW_CONTROL, window)
+        if not decision.allowed:
+            raise PermissionError(decision.reason)
+        if user32 is None or window.handle is None:
+            raise RuntimeError("WinAPI no disponible para redimensionar ventanas.")
+        if user32.IsZoomed(window.handle) or user32.IsIconic(window.handle):
+            user32.ShowWindow(window.handle, SW_RESTORE)
+        ok = user32.SetWindowPos(
+            window.handle,
+            0,
+            int(left),
+            int(top),
+            int(width),
+            int(height),
+            SWP_NOZORDER | SWP_SHOWWINDOW,
+        )
+        if not ok:
+            raise RuntimeError("Windows no permitio mover/redimensionar la ventana.")
+        return self.get_window_info(window.handle)
+
+    def maximize_window(self, handle: int | None = None, *, query: str | None = None) -> WindowInfo:
+        return self._show_window(handle, query=query, command=SW_SHOWMAXIMIZED)
+
+    def minimize_window(self, handle: int | None = None, *, query: str | None = None) -> WindowInfo:
+        return self._show_window(handle, query=query, command=SW_SHOWMINIMIZED)
+
+    def close_window(self, handle: int | None = None, *, query: str | None = None) -> dict:
+        window = self._resolve_window(handle, query)
+        decision = self.security.evaluate_scope(OSScope.WINDOW_CONTROL, window)
+        if not decision.allowed:
+            raise PermissionError(decision.reason)
+        if user32 is None or window.handle is None:
+            raise RuntimeError("WinAPI no disponible para cerrar ventanas.")
+        ok = bool(user32.PostMessageW(window.handle, WM_CLOSE, 0, 0))
+        return {"closed_requested": ok, "window": asdict(window)}
+
+    def tile_windows_layout(
+        self,
+        handles: tuple[int, ...] = (),
+        *,
+        queries: tuple[str, ...] = (),
+        layout: str = "horizontal",
+        monitor_index: int | None = None,
+    ) -> tuple[WindowInfo, ...]:
+        targets = [self._resolve_window(handle, None) for handle in handles]
+        targets.extend(self._resolve_window(None, query) for query in queries)
+        if not targets:
+            targets = list(self.list_windows(limit=2)[:2])
+        if not targets:
+            return ()
+
+        monitors = self.list_monitors()
+        monitor = monitors[monitor_index or 0] if monitors else MonitorInfo(0, Rect(0, 0, 1920, 1080), True)
+        area = monitor.rect
+        count = len(targets)
+        results: list[WindowInfo] = []
+        for index, window in enumerate(targets):
+            if layout == "vertical":
+                width = area.width
+                height = max(1, area.height // count)
+                left = area.left
+                top = area.top + index * height
+            else:
+                width = max(1, area.width // count)
+                height = area.height
+                left = area.left + index * width
+                top = area.top
+            results.append(self.resize_window(window.handle, left=left, top=top, width=width, height=height))
+        return tuple(results)
 
     def list_monitors(self) -> tuple[MonitorInfo, ...]:
         if user32 is None:
@@ -114,6 +261,34 @@ class WindowManager:
 
     def ensure_window_allowed(self, window: WindowInfo | None, scope: OSScope):
         return self.security.evaluate_scope(scope, window)
+
+    def _show_window(self, handle: int | None, *, query: str | None, command: int) -> WindowInfo:
+        window = self._resolve_window(handle, query)
+        decision = self.security.evaluate_scope(OSScope.WINDOW_CONTROL, window)
+        if not decision.allowed:
+            raise PermissionError(decision.reason)
+        if user32 is None or window.handle is None:
+            raise RuntimeError("WinAPI no disponible para controlar ventanas.")
+        if not user32.ShowWindow(window.handle, command):
+            # ShowWindow returns previous visibility, so false is not always a failure.
+            pass
+        return self.get_window_info(window.handle)
+
+    def _resolve_window(self, handle: int | None, query: str | None) -> WindowInfo:
+        if handle:
+            return self.get_window_info(handle)
+        if query:
+            matches = self.find_windows(query, limit=2)
+            if not matches:
+                raise ValueError(f"No se encontro ventana para: {query}")
+            if len(matches) > 1:
+                titles = [window.title for window in matches]
+                raise ValueError(f"Ventana ambigua para '{query}': {titles}")
+            return matches[0]
+        active = self.get_active_window()
+        if active is None:
+            raise ValueError("No hay ventana activa.")
+        return active
 
     def _get_window_title(self, handle: int) -> str:
         length = user32.GetWindowTextLengthW(handle)

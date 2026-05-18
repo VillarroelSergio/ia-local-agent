@@ -22,8 +22,10 @@ except ImportError:
 
 try:
     from tooling import RiskLevel, ToolContext, ToolDefinition, ToolMetadata
+    from os_integration import ApplicationManager
 except ModuleNotFoundError:
     from src.tooling import RiskLevel, ToolContext, ToolDefinition, ToolMetadata
+    from src.os_integration import ApplicationManager
 
 from .schemas import (
     ClickMouseInput,
@@ -136,15 +138,7 @@ BLOCKED_WINDOWS_PATHS = [
     "/.pypirc",
 ]
 
-APP_COMMANDS = {
-    "notepad": "notepad.exe",
-    "calculator": "calc.exe",
-    "calc": "calc.exe",
-    "explorer": "explorer.exe",
-    "paint": "mspaint.exe",
-    "cmd": "cmd.exe",
-    "powershell": "powershell.exe",
-}
+APP_MANAGER = ApplicationManager()
 
 
 class Point(Structure):
@@ -159,14 +153,26 @@ def safe_resolve(path):
 
 
 def open_application(args: OpenApplicationInput, ctx: ToolContext):
-    normalized = args.app_name.strip().lower()
-    command = APP_COMMANDS.get(normalized)
-
-    if command is None:
-        return {"error": f"Aplicacion no permitida: {args.app_name}", "allowed_apps": sorted(APP_COMMANDS)}
-
-    subprocess.Popen([command])
-    return {"opened": normalized, "command": command}
+    result = APP_MANAGER.launch(args.app_name)
+    if not result.opened:
+        return {
+            "error": result.error,
+            "query": result.query,
+            "matches": [
+                {"name": match.name, "source": match.source, "kind": match.kind}
+                for match in result.matches
+            ],
+        }
+    return {
+        "opened": True,
+        "query": result.query,
+        "app": {
+            "name": result.app.name,
+            "source": result.app.source,
+            "kind": result.app.kind,
+            "launch_path": result.app.launch_path,
+        } if result.app else None,
+    }
 
 
 def open_notepad(args: EmptyInput, ctx: ToolContext):
@@ -534,7 +540,7 @@ def tool(name, description, schema, handler, *, category, aliases=(), tags=(), c
 
 def build_local_tool_definitions():
     return [
-        tool("open_application", "Abre una aplicacion Windows permitida por allowlist.", OpenApplicationInput, open_application, aliases=("app",), category="windows", tags=("automation",)),
+        tool("open_application", "Abre una aplicacion instalada resolviendola desde Start Menu, registro App Paths, PATH o comandos Windows conocidos.", OpenApplicationInput, open_application, aliases=("app",), category="windows", tags=("automation",), capabilities=("application.launch",)),
         tool("open_notepad", "Abre el Bloc de notas de Windows.", EmptyInput, open_notepad, aliases=("notepad",), category="windows", tags=("automation",)),
         tool("open_calculator", "Abre la calculadora de Windows.", EmptyInput, open_calculator, aliases=("calc",), category="windows", tags=("automation",)),
         tool("get_system_info", "Obtiene informacion basica del sistema, CPU y memoria RAM.", EmptyInput, get_system_info, aliases=("sistema",), category="system", tags=("read_only",), capabilities=("system.inspect",), risk_level=RiskLevel.SAFE, requires_confirmation=False),

@@ -99,6 +99,8 @@ class Settings:
     lmstudio_api_key: str
     temperature: float
     lmstudio_minimal_chat: bool
+    agent_timing_log_enabled: bool
+    agent_timing_log_console: bool
     max_context_tokens: int
     reserved_response_tokens: int
     llm_native_tools_enabled: bool
@@ -135,6 +137,8 @@ def get_settings():
         lmstudio_api_key=os.getenv("LMSTUDIO_API_KEY", "lm-studio"),
         temperature=float(os.getenv("LLM_TEMPERATURE", "0.7")),
         lmstudio_minimal_chat=env_bool("LMSTUDIO_MINIMAL_CHAT", True),
+        agent_timing_log_enabled=env_bool("AGENT_TIMING_LOG_ENABLED", True),
+        agent_timing_log_console=env_bool("AGENT_TIMING_LOG_CONSOLE", True),
         max_context_tokens=env_int("MAX_CONTEXT_TOKENS", 4096),
         reserved_response_tokens=env_int("RESERVED_RESPONSE_TOKENS", 1024),
         llm_native_tools_enabled=env_bool("LLM_NATIVE_TOOLS_ENABLED", False),

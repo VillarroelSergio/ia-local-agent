@@ -17,3 +17,6 @@ data/rag_manifest.json
 data/tool_audit.jsonl
 *.sqlite3
 *.log
+data/agent_timing.jsonl
+data/*.log
+*.sqlite3

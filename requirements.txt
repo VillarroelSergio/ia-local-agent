@@ -4,6 +4,10 @@ chromadb
 sentence-transformers
 pypdf
 pytest
+pytest-asyncio
+httpx
+fastapi
+uvicorn[standard]
 pillow
 mss
 pytesseract

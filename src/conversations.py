@@ -245,6 +245,47 @@ class ConversationManager:
         self.store.save_conversation(conversation)
         return conversation
 
+    def list_conversations(self):
+        return sorted(
+            self.conversations.values(),
+            key=lambda conversation: conversation.updated_at,
+            reverse=True,
+        )
+
+    def get_conversation(self, conversation_id):
+        return self.conversations.get(conversation_id)
+
+    def set_active(self, conversation_id):
+        conversation = self.get_conversation(conversation_id)
+
+        if conversation is None:
+            raise KeyError(f"Conversacion no encontrada: {conversation_id}")
+
+        self.active_conversation = conversation
+        return conversation
+
+    def rename_conversation(self, conversation_id, title):
+        conversation = self.set_active(conversation_id)
+        conversation.title = title
+        conversation.updated_at = datetime.now().isoformat(timespec="seconds")
+        self.store.save_conversation(conversation)
+        return conversation
+
+    def delete_conversation(self, conversation_id):
+        conversation = self.conversations.pop(conversation_id, None)
+
+        if conversation is None:
+            return False
+
+        with self.store.connect() as connection:
+            connection.execute("DELETE FROM messages WHERE conversation_id = ?", (conversation_id,))
+            connection.execute("DELETE FROM conversations WHERE id = ?", (conversation_id,))
+
+        if self.active_conversation and self.active_conversation.id == conversation_id:
+            self.active_conversation = self.get_last_conversation()
+
+        return True
+
     def get_active(self):
         if self.active_conversation is None:
             return self.create_conversation()

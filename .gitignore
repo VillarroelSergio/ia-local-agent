@@ -16,3 +16,4 @@ data/hf_cache/
 data/rag_manifest.json
 data/tool_audit.jsonl
 *.sqlite3
+*.log

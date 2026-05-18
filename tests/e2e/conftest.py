@@ -56,6 +56,7 @@ def test_settings(sandbox):
         rag_embedding_model="local-hash",
         tool_allowed_roots=[sandbox, data_dir],
         tool_confirm_read_roots=[sandbox],
+        llm_native_tools_enabled=True,
         tools_require_confirmation=True,
     )
 

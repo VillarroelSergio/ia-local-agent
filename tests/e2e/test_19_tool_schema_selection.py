@@ -29,3 +29,9 @@ def test_screen_summary_request_sends_vision_toolset(test_settings):
     assert "summarize_screen" in names
     assert "ocr_active_window" in names
     assert "move_mouse" not in names
+
+
+def test_casual_message_does_not_send_tools(test_settings):
+    agent = LocalAgent(settings=test_settings)
+
+    assert agent.select_tool_schemas("hola") == []

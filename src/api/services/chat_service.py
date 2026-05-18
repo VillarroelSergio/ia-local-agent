@@ -124,11 +124,15 @@ class AgentService:
 
     async def _provider_stream(self, request: ChatRequest, request_id: str) -> AsyncIterator[StreamingChunk]:
         selected_tools = self.agent.select_tool_schemas(request.message) if request.use_tools else None
+        if not self.agent.native_tools_enabled:
+            selected_tools = None
         messages = self.agent.context_builder.build_messages(
             self.agent.conversations.get_messages(),
             lmstudio_compat=self.agent.provider.name == "lmstudio",
             extra_reserved_tokens=256 if selected_tools else 0,
         )
+        if self.agent.provider.name == "lmstudio" and self.agent.settings.lmstudio_minimal_chat:
+            messages = self.agent.build_lmstudio_plain_fallback_messages(messages)
         llm_request = LLMRequest(
             model=request.model or self.agent.settings.default_model,
             messages=messages,

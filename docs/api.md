@@ -8,6 +8,14 @@ La API desacopla la CLI del core `LocalAgent` para futuras UIs Tauri/React, over
 python -m src.api.main
 ```
 
+En PowerShell tambien puedes usar:
+
+```powershell
+.\scripts\start-api.ps1
+```
+
+Deja esa terminal abierta. Uvicorn es el proceso servidor; si cierras o interrumpes esa ventana, la API deja de escuchar.
+
 Por defecto escucha en `127.0.0.1:8765`. Si `API_HOST=0.0.0.0`, se ignora salvo que `API_ALLOW_NETWORK=true`.
 
 Variables principales:
@@ -20,15 +28,22 @@ API_ALLOWED_ORIGINS=http://127.0.0.1:1420,http://localhost:1420
 API_RATE_LIMIT_PER_MINUTE=120
 API_REQUEST_SIZE_LIMIT=1000000
 API_DEV_MODE=true
+LLM_NATIVE_TOOLS_ENABLED=false
 ```
+
+Por defecto `LLM_NATIVE_TOOLS_ENABLED=false` porque muchos modelos de LM Studio no soportan tools nativas en su chat template. El chat sigue funcionando y las tools directas de la API/CLI siguen disponibles mediante endpoints o `/tool`. Activalo solo si tu modelo local soporta OpenAI tools correctamente.
 
 ## Auth
 
 Usa `x-api-key` o `Authorization: Bearer ...`.
 
 ```powershell
-curl -H "x-api-key: local-dev-token" http://127.0.0.1:8765/api/status
+Invoke-RestMethod `
+  -Uri http://127.0.0.1:8765/api/status `
+  -Headers @{ "x-api-key" = "local-dev-token" }
 ```
+
+Si quieres usar curl real en PowerShell, usa `curl.exe`, no `curl`, porque `curl` suele ser alias de `Invoke-WebRequest`.
 
 `/api/health`, `/api/status` y `/api/metrics` son endpoints de observabilidad local. Tools y workflows requieren API key.
 

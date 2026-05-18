@@ -99,9 +99,10 @@ class LocalAgent:
             if not (use_tools and self.is_lmstudio_tool_template_error(error)):
                 raise
             print("\nAviso: LM Studio no pudo renderizar tools con el template del modelo. Reintentando sin tools.")
+            fallback_messages = self.build_lmstudio_plain_fallback_messages(messages)
             request = LLMRequest(
                 model=self.settings.default_model,
-                messages=messages,
+                messages=fallback_messages,
                 temperature=self.settings.temperature,
                 tools=None,
                 tool_choice=None,
@@ -166,6 +167,23 @@ class LocalAgent:
             and "jinja" in text
             and "no user query found" in text
         )
+
+    def build_lmstudio_plain_fallback_messages(self, messages):
+        user_messages = [
+            (message.get("content") or "").strip()
+            for message in messages
+            if message.get("role") == "user" and (message.get("content") or "").strip()
+        ]
+        latest_user = user_messages[-1] if user_messages else "Continua la conversacion."
+        return [{
+            "role": "user",
+            "content": (
+                "Responde de forma breve y util. El soporte nativo de tools del modelo local fallo, "
+                "asi que no ejecutes acciones: explica que puedes hacerlo cuando el modelo soporte tools "
+                "o cuando usemos el modo textual de tools.\n\n"
+                f"Peticion del usuario:\n{latest_user}"
+            ),
+        }]
 
     def select_tool_schemas(self, query):
         """Reduce schemas enviados al modelo segun la intencion del turno."""

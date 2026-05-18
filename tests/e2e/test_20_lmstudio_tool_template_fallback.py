@@ -76,3 +76,19 @@ def test_lmstudio_streaming_tool_template_error_retries_without_tools(test_setti
     assert tool_calls == []
     assert provider.requests[0].tools
     assert provider.requests[1].tools is None
+    assert [message["role"] for message in provider.requests[1].messages] == ["user"]
+
+
+def test_lmstudio_plain_fallback_collapses_to_single_user_message(test_settings):
+    agent = LocalAgent(settings=test_settings)
+    messages = [
+        {"role": "system", "content": "Sistema con instrucciones."},
+        {"role": "assistant", "content": "Respuesta previa."},
+        {"role": "user", "content": "busca este archivo HerejiaHorus.rar"},
+    ]
+
+    fallback = agent.build_lmstudio_plain_fallback_messages(messages)
+
+    assert len(fallback) == 1
+    assert fallback[0]["role"] == "user"
+    assert "HerejiaHorus.rar" in fallback[0]["content"]

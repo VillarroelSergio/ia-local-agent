@@ -55,8 +55,10 @@ class AgentService:
         request_id = uuid4().hex
         started_at = monotonic()
         text = ""
+        final_text = ""
         tools_executed: list[str] = []
         tool_calls: list[dict[str, Any]] = []
+        tool_results: list[dict[str, Any]] = []
 
         async with self._lock:
             conversation = self._select_conversation(request.conversation_id)
@@ -90,7 +92,25 @@ class AgentService:
                     async for event in self._execute_tool_calls(tool_calls, conversation.id, request_id, request.correlation_id):
                         if event.type == "tool.completed":
                             tools_executed.append(event.data.get("name", ""))
+                        if event.type in {"tool.completed", "tool.failed", "tool.confirmation_required"}:
+                            tool_results.append({
+                                "tool": event.data.get("name", ""),
+                                "result": event.data.get("result")
+                                if event.type == "tool.completed"
+                                else event.data.get("error"),
+                            })
                         yield event
+                    async for chunk in self._final_response_after_tools(
+                        request,
+                        request_id,
+                        conversation.id,
+                        tool_results,
+                    ):
+                        if chunk.type == "message.delta" and chunk.delta:
+                            final_text += chunk.delta
+                            text += chunk.delta
+                        yield chunk
+                    self.agent.conversations.append(Message(role="assistant", content=final_text))
                 else:
                     self.agent.conversations.append(Message(role="assistant", content=text))
 
@@ -172,7 +192,6 @@ class AgentService:
 
     async def _execute_tool_calls(self, tool_calls, conversation_id, request_id, correlation_id):
         from src.tooling import ToolCall, ToolContext
-        from src.tools import TOOL_EXECUTOR
 
         for call in tool_calls:
             name = call["function"]["name"]
@@ -180,7 +199,7 @@ class AgentService:
             started = self._chunk("tool.started", request_id, correlation_id, data={"id": call["id"], "name": name, "arguments": args})
             await self._publish(started.type, request_id, correlation_id, started.data)
             yield started
-            result = await TOOL_EXECUTOR.execute(
+            result = await self.agent.tool_executor.execute(
                 ToolCall(id=call["id"], name=name, arguments=args, conversation_id=conversation_id),
                 ToolContext(conversation_id=conversation_id, settings=self.agent.settings),
                 require_preapproved=False,
@@ -196,10 +215,48 @@ class AgentService:
             data.update({"id": call["id"], "name": name})
             yield self._chunk(event_type, request_id, correlation_id, data=data)
 
+    async def _final_response_after_tools(self, request: ChatRequest, request_id: str, conversation_id: str, tool_results: list[dict[str, Any]]):
+        system_prompt = self.agent.prompt_manager.render_system_prompt(
+            provider=request.provider or self.agent.settings.default_provider,
+            model=request.model or self.agent.settings.default_model,
+            memory_context=self.agent.semantic_memory.format_explicit_for_prompt(),
+            semantic_context=self.agent.semantic_memory.format_for_prompt(request.message),
+        )
+        recent_context = self.agent.format_recent_conversation_for_prompt(
+            exclude_current_tool_trace=True,
+        )
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": (
+                    "Responde al usuario usando el historial reciente y estos resultados de herramientas.\n\n"
+                    f"Historial reciente:\n{recent_context}\n\n"
+                    f"Peticion original del usuario:\n{request.message}\n\n"
+                    f"Resultados de herramientas:\n{json.dumps(tool_results, indent=2, ensure_ascii=False)}"
+                ),
+            },
+        ]
+        llm_request = LLMRequest(
+            model=request.model or self.agent.settings.default_model,
+            messages=messages,
+            temperature=self.agent.settings.temperature,
+            tools=None,
+            tool_choice=None,
+            stream=True,
+        )
+        stream = await asyncio.to_thread(self.agent.provider.stream, llm_request)
+        for raw in stream:
+            delta = raw.choices[0].delta
+            if getattr(delta, "content", None):
+                chunk = self._chunk("message.delta", request_id, request.correlation_id, delta=delta.content)
+                await self._publish(chunk.type, request_id, request.correlation_id, chunk.model_dump())
+                yield chunk
+
     def _select_conversation(self, conversation_id: str | None):
         if conversation_id:
             return self.agent.conversations.set_active(conversation_id)
-        return self.agent.conversations.get_active()
+        return self.agent.conversations.create_conversation()
 
     @staticmethod
     def _parse_arguments(call):

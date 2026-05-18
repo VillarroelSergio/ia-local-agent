@@ -2,3 +2,5 @@ openai
 psutil
 chromadb
 sentence-transformers
+pypdf
+pytest

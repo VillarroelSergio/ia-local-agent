@@ -12,8 +12,9 @@ La meta es evolucionar desde un chat local hacia un copiloto privado para Window
 - Tool calling automatico con confirmacion del usuario.
 - Tools manuales desde consola.
 - Memoria persistente y semantica con ChromaDB.
-- Embeddings locales reales con `sentence-transformers`.
+- Embeddings locales via LM Studio para memoria y RAG.
 - Gestion de memoria largo plazo: recuerdos explicitos, busqueda, estadisticas y reindexado.
+- RAG local documental sobre ChromaDB para Markdown, TXT, JSON, CSV, codigo y PDFs.
 - Backend modular: providers, prompts, contexto, conversaciones, memoria, tools y orquestacion inicial.
 
 ## Estructura
@@ -32,6 +33,7 @@ ia-local-agent/
 |   |-- prompts.py           # System prompt
 |   |-- providers.py         # Providers LLM
 |   |-- semantic_memory.py   # ChromaDB + embeddings
+|   |-- rag/                 # Ingestion, chunking, ChromaDB y retrieval documental
 |   |-- tools.py             # Fachada de tools
 |   |-- tooling/             # Registry, permisos, auditoria, ejecucion
 |   |-- tools_catalog/       # Catalogo de tools locales
@@ -54,7 +56,7 @@ Dependencias principales:
 openai
 psutil
 chromadb
-sentence-transformers
+pypdf
 ```
 
 Instalacion:
@@ -160,9 +162,35 @@ Usuario pregunta algo
 
 Embeddings:
 
-- Por defecto usa `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`.
-- Si `sentence-transformers` o el modelo no estan disponibles, cae al embedding hash local para mantener el agente operativo.
+- Por defecto usa LM Studio con `text-embedding-nomic-embed-text-v1.5`.
+- Si prefieres `sentence-transformers`, configura `SEMANTIC_EMBEDDING_PROVIDER=sentence-transformers`.
 - Al cambiar de embedding, ejecuta `/memory_rebuild` para reindexar el historial guardado.
+
+## RAG Local
+
+El RAG documental usa ChromaDB persistente, manifest incremental en `data/rag_manifest.json` y `.ragignore` para excluir secretos, entornos virtuales, caches y datos privados. Por defecto genera embeddings contra LM Studio usando el modelo `text-embedding-nomic-embed-text-v1.5`.
+
+Comandos:
+
+```text
+/rag_index README.md --project selftest
+/rag_index docs --project local-agent
+/rag_search como ejecuto el agente
+/rag_stats
+```
+
+La tool `search_local_knowledge` queda disponible para el modelo cuando la pregunta dependa de documentacion local indexada. Devuelve contexto con fuentes, distancias y metadata.
+
+Tipos soportados:
+
+| Tipo | Estrategia |
+| --- | --- |
+| Markdown | Chunking por jerarquia de headings |
+| TXT/log | Chunking por parrafos con overlap |
+| JSON | Pretty-print estructurado antes de chunking |
+| CSV | Filas convertidas a texto con columnas |
+| Codigo | Chunking por simbolos Python cuando aplica, fallback por texto |
+| PDF | Extraccion por paginas con `pypdf` |
 
 ## Tools
 
@@ -180,6 +208,7 @@ Las tools estan registradas mediante `ToolRegistry` y se exponen al modelo con s
 /tool get_clipboard
 /tool set_clipboard {"text": "hola desde el agente"}
 /tool open_url {"url": "https://example.com"}
+/tool search_local_knowledge {"query": "como se ejecuta el agente", "project_id": "selftest", "top_k": 3}
 ```
 
 Tools disponibles:
@@ -205,6 +234,7 @@ Tools disponibles:
 | `type_text` | Escribe texto |
 | `open_url` | Abre una URL |
 | `run_powershell` | Ejecuta comandos PowerShell permitidos |
+| `search_local_knowledge` | Busca contexto en la documentacion local indexada |
 
 Apps permitidas en `open_application`:
 
@@ -264,13 +294,22 @@ LLM_TEMPERATURE=0.7
 MAX_CONTEXT_TOKENS=4096
 RESERVED_RESPONSE_TOKENS=1024
 TOOLS_REQUIRE_CONFIRMATION=true
+TOOL_ALLOWED_ROOTS=D:\local-ai-agent\project
+TOOL_CONFIRM_READ_ROOTS=D:\;C:\Users\Sergio Villa\Documents;C:\Users\Sergio Villa\Desktop;C:\Users\Sergio Villa\Downloads;C:\Users\Sergio Villa\Pictures;C:\Users\Sergio Villa\Videos
 CONVERSATIONS_PATH=data/conversations.sqlite3
 CHROMA_PATH=data/chroma
 SEMANTIC_MEMORY_ENABLED=true
 SEMANTIC_MEMORY_RESULTS=5
-SEMANTIC_EMBEDDING_PROVIDER=auto
-SEMANTIC_EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+SEMANTIC_EMBEDDING_PROVIDER=lmstudio
+SEMANTIC_EMBEDDING_MODEL=text-embedding-nomic-embed-text-v1.5
 LONG_TERM_MEMORY_ENABLED=true
+RAG_DOCUMENTS_ROOT=..
+RAG_MANIFEST_PATH=data/rag_manifest.json
+RAG_EMBEDDING_PROVIDER=lmstudio
+RAG_EMBEDDING_MODEL=text-embedding-nomic-embed-text-v1.5
+RAG_CHUNK_TOKENS=750
+RAG_CHUNK_OVERLAP_TOKENS=120
+RAG_TOP_K=8
 LOG_LEVEL=INFO
 ```
 
@@ -283,6 +322,7 @@ CLI / futura UI
         -> PromptManager
         -> ConversationManager
         -> SemanticMemoryManager
+        -> LocalRagService / ChromaRagStore
         -> ProviderRegistry / LLMProvider
         -> ToolRegistry / ToolExecutor
 ```
@@ -295,6 +335,7 @@ Modulos principales:
 - `conversations.py`: mensajes, conversaciones y persistencia SQLite.
 - `context.py`: recorte de contexto e inyeccion de memoria.
 - `semantic_memory.py`: memoria semantica sobre ChromaDB.
+- `rag/`: RAG documental local con loaders, manifest incremental, chunking, ChromaDB y retrieval.
 - `tooling/`: registry, permisos, auditoria y ejecucion de tools.
 - `tools_catalog/`: definiciones de tools locales por dominio.
 - `orchestration/`: esqueleto para workflows agenticos.
@@ -305,9 +346,9 @@ Modulos principales:
 
 1. Mejorar seguridad y permisos de tools. En progreso: registry, permisos y auditoria ya separados.
 2. Crear memoria persistente. Hecho: SQLite para conversaciones y ChromaDB para memoria.
-3. Mejorar memoria con busqueda semantica. Hecho base: embeddings locales reales, busqueda y reindexado.
-4. Anadir RAG local sobre documentos.
-5. Integrar embeddings locales. Hecho base con `sentence-transformers`.
+3. Mejorar memoria con busqueda semantica. Hecho base: embeddings locales por LM Studio, busqueda y reindexado.
+4. Anadir RAG local sobre documentos. Hecho base: ingestion, chunking, ChromaDB, CLI y tool.
+5. Integrar embeddings locales. Hecho base con LM Studio y fallback opcional a `sentence-transformers`.
 6. Automatizacion Windows avanzada.
 7. UI propia.
 8. Voz local con STT y TTS.

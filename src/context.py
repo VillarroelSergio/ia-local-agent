@@ -36,18 +36,33 @@ class SlidingWindowPolicy:
         )
         selected = []
         used = self.token_counter.count_message(system_message)
+        last_user_message = self.find_last_user_message(messages)
 
         for message in reversed(messages):
             message_tokens = self.token_counter.count_message(message)
 
             if used + message_tokens > budget:
+                if message is last_user_message and message not in selected:
+                    selected.append(message)
                 break
 
             selected.append(message)
             used += message_tokens
 
         selected.reverse()
+        if last_user_message is not None and last_user_message not in selected:
+            selected.append(last_user_message)
         return [system_message, *selected]
+
+    def find_last_user_message(self, messages):
+        for message in reversed(messages):
+            role = message.get("role") if isinstance(message, dict) else message.role
+            content = message.get("content") if isinstance(message, dict) else message.content
+
+            if role == "user" and content:
+                return message
+
+        return None
 
 
 class ContextBuilder:
@@ -112,6 +127,17 @@ class ContextBuilder:
         for message in messages:
             role = message.get("role")
             content = message.get("content")
+            tool_calls = message.get("tool_calls")
+
+            if role == "assistant" and tool_calls:
+                compatible_messages.append({
+                    "role": "assistant",
+                    "content": content.strip() if content and content.strip() else "Voy a usar una herramienta local.",
+                })
+                continue
+
+            if role == "assistant" and self.looks_like_textual_tool_call(content):
+                continue
 
             if role == "tool":
                 tool_name = message.get("name") or "tool"
@@ -125,6 +151,12 @@ class ContextBuilder:
                 })
                 continue
 
+            if role == "assistant" and not content:
+                continue
+
+            if role not in {"system", "user", "assistant"}:
+                role = "user"
+
             clean_message = {
                 "role": role,
                 "content": content or "",
@@ -132,4 +164,31 @@ class ContextBuilder:
 
             compatible_messages.append(clean_message)
 
+        compatible_messages = self.merge_consecutive_roles(compatible_messages)
+
+        while compatible_messages and compatible_messages[-1]["role"] == "assistant":
+            compatible_messages.pop()
+
         return compatible_messages
+
+    def looks_like_textual_tool_call(self, content):
+        text = (content or "").strip().lower()
+        return text.startswith("<tool_call>") or "<function=" in text
+
+    def merge_consecutive_roles(self, messages):
+        merged = []
+
+        for message in messages:
+            if (
+                merged
+                and merged[-1]["role"] == message["role"]
+                and message["role"] in {"user", "assistant"}
+            ):
+                merged[-1]["content"] = (
+                    f"{merged[-1]['content']}\n\n{message['content']}"
+                ).strip()
+                continue
+
+            merged.append(message)
+
+        return merged

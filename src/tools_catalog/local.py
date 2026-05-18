@@ -50,6 +50,20 @@ MAX_FILE_READ_CHARS = 12000
 MAX_CLIPBOARD_CHARS = 8000
 MAX_POWERSHELL_TIMEOUT = 15
 MAX_MOUSE_COORDINATE = 10000
+EXCLUDED_SEARCH_DIR_NAMES = {
+    ".git",
+    ".hg",
+    ".svn",
+    "__pycache__",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".venv",
+    "venv",
+    "env",
+    "node_modules",
+    "data",
+}
 
 ALLOWED_POWERSHELL_COMMANDS = {
     "get-date",
@@ -68,6 +82,59 @@ ALLOWED_POWERSHELL_COMMANDS = {
 }
 
 BLOCKED_POWERSHELL_TOKENS = [";", "&&", "||", "$(", "`", ">", ">>", "<"]
+
+BLOCKED_WINDOWS_PATHS = [
+    "c:\\windows",
+    "c:/windows",
+    "c:\\windows\\system32",
+    "c:/windows/system32",
+    "c:\\windows\\syswow64",
+    "c:/windows/syswow64",
+    "c:\\windows\\winsxs",
+    "c:/windows/winsxs",
+    "c:\\windows\\temp",
+    "c:/windows/temp",
+    "c:\\windows\\logs",
+    "c:/windows/logs",
+    "c:\\program files",
+    "c:/program files",
+    "c:\\program files (x86)",
+    "c:/program files (x86)",
+    "c:\\programdata",
+    "c:/programdata",
+    "\\appdata",
+    "/appdata/",
+    "\\appdata\\local\\google",
+    "/appdata/local/google",
+    "\\appdata\\local\\microsoft\\edge",
+    "/appdata/local/microsoft/edge",
+    "\\appdata\\roaming\\mozilla",
+    "/appdata/roaming/mozilla",
+    "\\appdata\\roaming\\",
+    "/appdata/roaming/",
+    "\\appdata\\local\\",
+    "/appdata/local/",
+    "\\appdata\\locallow\\",
+    "/appdata/locallow/",
+    "\\.ssh",
+    "/.ssh",
+    "\\.aws",
+    "/.aws",
+    "\\.azure",
+    "/.azure",
+    "\\.docker",
+    "/.docker",
+    "\\.kube",
+    "/.kube",
+    "\\.gnupg",
+    "/.gnupg",
+    "\\.git-credentials",
+    "/.git-credentials",
+    "\\.npmrc",
+    "/.npmrc",
+    "\\.pypirc",
+    "/.pypirc",
+]
 
 APP_COMMANDS = {
     "notepad": "notepad.exe",
@@ -221,11 +288,22 @@ def search_files(args: SearchFilesInput, ctx: ToolContext):
     matches = []
 
     try:
-        for file_path in root.rglob(args.pattern):
-            matches.append(str(file_path))
+        for directory, dirnames, filenames in root.walk():
+            dirnames[:] = [
+                dirname
+                for dirname in dirnames
+                if dirname.lower() not in EXCLUDED_SEARCH_DIR_NAMES
+            ]
 
-            if len(matches) >= args.limit:
-                break
+            for filename in filenames:
+                if not Path(filename).match(args.pattern):
+                    continue
+
+                file_path = directory / filename
+                matches.append(str(file_path))
+
+                if len(matches) >= args.limit:
+                    return {"path": str(root), "pattern": args.pattern, "count": len(matches), "matches": matches}
     except PermissionError as error:
         return {"error": "Permiso denegado durante la busqueda.", "details": str(error), "matches": matches}
 
@@ -395,6 +473,10 @@ def validate_powershell_command(command):
     for blocked_token in BLOCKED_POWERSHELL_TOKENS:
         if blocked_token in normalized_command:
             return f"Token no permitido en PowerShell: {blocked_token}"
+
+    for blocked_path in BLOCKED_WINDOWS_PATHS:
+        if blocked_path in normalized_command:
+            return f"Ruta Windows bloqueada en PowerShell: {blocked_path}"
 
     command_names = get_powershell_command_names(normalized_command)
 

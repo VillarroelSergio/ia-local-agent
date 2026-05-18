@@ -14,6 +14,7 @@ try:
     from conversations import ConversationManager, ConversationStore, Message
     from prompts import PromptManager
     from providers import LLMRequest, ProviderError, build_provider_registry
+    from rag import LocalRagService
     from semantic_memory import SemanticMemoryManager
     from tools import TOOL_SCHEMAS, run_tool
 except ModuleNotFoundError:
@@ -22,6 +23,7 @@ except ModuleNotFoundError:
     from src.conversations import ConversationManager, ConversationStore, Message
     from src.prompts import PromptManager
     from src.providers import LLMRequest, ProviderError, build_provider_registry
+    from src.rag import LocalRagService
     from src.semantic_memory import SemanticMemoryManager
     from src.tools import TOOL_SCHEMAS, run_tool
 
@@ -40,8 +42,11 @@ class LocalAgent:
             max_results=self.settings.semantic_memory_results,
             embedding_provider=self.settings.semantic_embedding_provider,
             embedding_model=self.settings.semantic_embedding_model,
+            embedding_base_url=self.settings.lmstudio_base_url,
+            embedding_api_key=self.settings.lmstudio_api_key,
             long_term_enabled=self.settings.long_term_memory_enabled,
         )
+        self.rag = LocalRagService(self.settings)
         self.conversations = ConversationManager(
             ConversationStore(self.settings.conversations_path)
         )
@@ -128,6 +133,52 @@ class LocalAgent:
 
         print()
         return assistant_message, normalized_tool_calls
+
+    def stream_final_response_after_tools(self, original_user_input, tool_results):
+        """Pide respuesta final con un prompt simple compatible con LM Studio."""
+        system_prompt = self.prompt_manager.render_system_prompt(
+            provider=self.settings.default_provider,
+            model=self.settings.default_model,
+            memory_context=self.semantic_memory.format_explicit_for_prompt(),
+            semantic_context="No hay memoria semantica relevante.",
+        )
+        tool_context = json.dumps(tool_results, indent=2, ensure_ascii=False)
+        messages = [
+            {
+                "role": "system",
+                "content": system_prompt,
+            },
+            {
+                "role": "user",
+                "content": (
+                    "Responde al usuario usando estos resultados de herramientas.\n\n"
+                    f"Peticion original del usuario:\n{original_user_input}\n\n"
+                    f"Resultados de herramientas:\n{tool_context}"
+                ),
+            },
+        ]
+        request = LLMRequest(
+            model=self.settings.default_model,
+            messages=messages,
+            temperature=self.settings.temperature,
+            tools=None,
+            tool_choice=None,
+            stream=True,
+        )
+        stream = self.provider.stream(request)
+        assistant_message = ""
+
+        print("\nIA: ", end="", flush=True)
+
+        for chunk in stream:
+            delta = chunk.choices[0].delta
+
+            if delta.content:
+                print(delta.content, end="", flush=True)
+                assistant_message += delta.content
+
+        print()
+        return assistant_message
 
     def parse_tool_arguments(self, tool_call):
         """Convierte los argumentos JSON de una tool call en un diccionario."""
@@ -233,6 +284,36 @@ class LocalAgent:
 
         return False
 
+    def handle_rag_command(self, user_input):
+        """Gestiona comandos manuales de RAG documental."""
+        if user_input.startswith("/rag_index "):
+            raw = user_input.removeprefix("/rag_index ").strip()
+            project_id = "default"
+            path = raw
+
+            if " --project " in raw:
+                path, _, project_id = raw.partition(" --project ")
+                path = path.strip()
+                project_id = project_id.strip() or "default"
+
+            result = self.rag.index_path(path, project_id=project_id)
+            print("\nRAG index:", json.dumps(result, indent=2, ensure_ascii=False))
+            return True
+
+        if user_input.startswith("/rag_search "):
+            query = user_input.removeprefix("/rag_search ").strip()
+            result = self.rag.search(query)
+            print("\nRAG:")
+            print(self.rag.format_context(result, max_chars=6000))
+            print("\nTrace:", json.dumps(result.trace, indent=2, ensure_ascii=False))
+            return True
+
+        if user_input == "/rag_stats":
+            print("\nRAG:", json.dumps(self.rag.stats(), indent=2, ensure_ascii=False))
+            return True
+
+        return False
+
     def handle_tool_command(self, user_input):
         """Ejecuta tools manuales desde la CLI."""
         if not user_input.startswith("/tool "):
@@ -253,6 +334,9 @@ class LocalAgent:
 
     def chat_once(self):
         """Procesa una interaccion completa de chat."""
+        original_user_input = self.context_builder.get_last_user_input(
+            self.conversations.get_messages()
+        )
         assistant_message, tool_calls = self.stream_response(use_tools=True)
 
         if not tool_calls:
@@ -268,9 +352,15 @@ class LocalAgent:
             tool_calls=tool_calls,
         ))
 
+        tool_results = []
+
         for tool_call in tool_calls:
             result = self.run_confirmed_tool_call(tool_call)
             print("\nTool:", result)
+            tool_results.append({
+                "tool": tool_call["function"]["name"],
+                "result": result,
+            })
 
             self.conversations.append(Message(
                 role="tool",
@@ -279,9 +369,9 @@ class LocalAgent:
                 name=tool_call["function"]["name"],
             ))
 
-        final_message, _ = self.stream_response(
-            use_tools=False,
-            lmstudio_compat=True,
+        final_message = self.stream_final_response_after_tools(
+            original_user_input,
+            tool_results,
         )
 
         self.conversations.append(Message(
@@ -348,6 +438,7 @@ def main():
     print("Agente IA local iniciado. Escribe 'salir' para terminar.")
     print("Tools manuales: /tool notepad, /tool calc, /tool sistema")
     print("Memoria: /remember texto, /memories, /memory_search texto, /memory_stats, /memory_rebuild, /forget id")
+    print("RAG: /rag_index ruta [--project nombre], /rag_search pregunta, /rag_stats")
     print(f"Provider: {agent.settings.default_provider} | Modelo: {agent.settings.default_model}")
 
     while True:
@@ -363,6 +454,9 @@ def main():
             continue
 
         if agent.handle_memory_command(user_input):
+            continue
+
+        if agent.handle_rag_command(user_input):
             continue
 
         if agent.handle_tool_command(user_input):

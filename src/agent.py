@@ -7,6 +7,9 @@ compatibilidad, pero el nucleo ya puede reutilizarse desde una UI o API local.
 
 import json
 import sys
+from datetime import datetime
+from time import monotonic
+from uuid import uuid4
 
 try:
     from config import get_settings
@@ -63,6 +66,12 @@ class LocalAgent:
 
     def stream_response(self, use_tools=True, lmstudio_compat=None):
         """Solicita una respuesta al modelo y la imprime en streaming."""
+        request_id = uuid4().hex
+        turn_started_at = monotonic()
+        context_started_at = monotonic()
+        fallback_used = False
+        fallback_reason = None
+
         if lmstudio_compat is None:
             lmstudio_compat = self.provider.name == "lmstudio"
 
@@ -81,6 +90,7 @@ class LocalAgent:
             lmstudio_compat=lmstudio_compat,
             extra_reserved_tokens=extra_reserved_tokens,
         )
+        context_ms = self._duration_ms(context_started_at)
         request = LLMRequest(
             model=self.settings.default_model,
             messages=messages,
@@ -93,11 +103,15 @@ class LocalAgent:
         print("\nIA: ", end="", flush=True)
 
         try:
+            provider_started_at = monotonic()
             stream = self.provider.stream(request)
-            assistant_message, tool_calls = self.consume_provider_stream(stream)
+            provider_open_ms = self._duration_ms(provider_started_at)
+            assistant_message, tool_calls, stream_metrics = self.consume_provider_stream(stream)
         except Exception as error:
             if not (use_tools and self.is_lmstudio_tool_template_error(error)):
                 raise
+            fallback_used = True
+            fallback_reason = "lmstudio_tool_template_error"
             print("\nAviso: LM Studio no pudo renderizar tools con el template del modelo. Reintentando sin tools.")
             fallback_messages = self.build_lmstudio_plain_fallback_messages(messages)
             request = LLMRequest(
@@ -109,8 +123,10 @@ class LocalAgent:
                 stream=True,
                 metadata={"tool_fallback": "lmstudio_template_error"},
             )
+            provider_started_at = monotonic()
             stream = self.provider.stream(request)
-            assistant_message, tool_calls = self.consume_provider_stream(stream)
+            provider_open_ms = self._duration_ms(provider_started_at)
+            assistant_message, tool_calls, stream_metrics = self.consume_provider_stream(stream)
 
         normalized_tool_calls = []
 
@@ -121,16 +137,37 @@ class LocalAgent:
             normalized_tool_calls.append(tool_call)
 
         print()
+        self.log_turn_timing({
+            "request_id": request_id,
+            "conversation_id": self.conversations.get_active().id,
+            "provider": self.provider.name,
+            "model": request.model,
+            "context_ms": context_ms,
+            "provider_open_ms": provider_open_ms,
+            "first_content_ms": stream_metrics["first_content_ms"],
+            "stream_ms": stream_metrics["stream_ms"],
+            "total_ms": self._duration_ms(turn_started_at),
+            "message_chars": len(assistant_message or ""),
+            "approx_output_tokens": max(0, len(assistant_message or "") // 4),
+            "tool_calls": len(normalized_tool_calls),
+            "tools_sent": bool(selected_tools),
+            "fallback_used": fallback_used,
+            "fallback_reason": fallback_reason,
+        })
         return assistant_message, normalized_tool_calls
 
     def consume_provider_stream(self, stream):
         assistant_message = ""
         tool_calls = {}
+        stream_started_at = monotonic()
+        first_content_ms = None
 
         for chunk in stream:
             delta = chunk.choices[0].delta
 
             if delta.content:
+                if first_content_ms is None:
+                    first_content_ms = self._duration_ms(stream_started_at)
                 print(delta.content, end="", flush=True)
                 assistant_message += delta.content
 
@@ -158,7 +195,48 @@ class LocalAgent:
                         if tool_call.function.arguments:
                             tool_calls[index]["function"]["arguments"] += tool_call.function.arguments
 
-        return assistant_message, tool_calls
+        return assistant_message, tool_calls, {
+            "first_content_ms": first_content_ms,
+            "stream_ms": self._duration_ms(stream_started_at),
+        }
+
+    def log_turn_timing(self, payload):
+        """Registra latencias del turno en data/agent_timing.jsonl."""
+        if not self.settings.agent_timing_log_enabled:
+            return
+
+        event = {
+            "timestamp": datetime.now().isoformat(timespec="milliseconds"),
+            "event_type": "agent.turn_timing",
+            **payload,
+        }
+        log_path = self.settings.project_root / "data" / "agent_timing.jsonl"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            with log_path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(event, ensure_ascii=False) + "\n")
+        except OSError:
+            pass
+
+        if self.settings.agent_timing_log_console:
+            first = payload.get("first_content_ms")
+            first_text = f"{first}ms" if first is not None else "n/a"
+            print(
+                "[timing] "
+                f"total={payload['total_ms']}ms "
+                f"context={payload['context_ms']}ms "
+                f"provider_open={payload['provider_open_ms']}ms "
+                f"first_token={first_text} "
+                f"stream={payload['stream_ms']}ms "
+                f"chars={payload['message_chars']} "
+                f"tools_sent={payload['tools_sent']} "
+                f"fallback={payload['fallback_used']}"
+            )
+
+    @staticmethod
+    def _duration_ms(started_at):
+        return int((monotonic() - started_at) * 1000)
 
     def is_lmstudio_tool_template_error(self, error):
         text = str(error).lower()

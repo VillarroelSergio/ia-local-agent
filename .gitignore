@@ -15,4 +15,6 @@ data/chroma_sentence*/
 data/hf_cache/
 data/rag_manifest.json
 data/tool_audit.jsonl
+data/agent_timing.jsonl
+data/*.log
 *.sqlite3

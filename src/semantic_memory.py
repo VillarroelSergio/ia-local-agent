@@ -10,6 +10,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import chromadb
+from openai import OpenAI
 
 
 TOKEN_PATTERN = re.compile(r"\w+", re.UNICODE)
@@ -104,6 +105,31 @@ class SentenceTransformerEmbeddingFunction:
         return self.__call__(input)
 
 
+class LMStudioEmbeddingFunction:
+    """Embedding local usando el endpoint OpenAI-compatible de LM Studio."""
+
+    def __init__(self, model_name, base_url, api_key):
+        self.model_name = model_name
+        self.base_url = base_url
+        self.client = OpenAI(base_url=base_url, api_key=api_key)
+
+    def name(self):
+        return f"lmstudio:{self.model_name}"
+
+    def __call__(self, input):
+        response = self.client.embeddings.create(
+            model=self.model_name,
+            input=input,
+        )
+        return [item.embedding for item in response.data]
+
+    def embed_query(self, input):
+        return self.__call__(input)
+
+    def embed_documents(self, input):
+        return self.__call__(input)
+
+
 @dataclass
 class SemanticResult:
     id: str
@@ -120,8 +146,10 @@ class SemanticMemoryManager:
         path,
         enabled=True,
         max_results=5,
-        embedding_provider="auto",
-        embedding_model="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+        embedding_provider="lmstudio",
+        embedding_model="text-embedding-nomic-embed-text-v1.5",
+        embedding_base_url="http://127.0.0.1:1234/v1",
+        embedding_api_key="lm-studio",
         long_term_enabled=True,
     ):
         self.path = Path(path)
@@ -129,6 +157,8 @@ class SemanticMemoryManager:
         self.max_results = max_results
         self.embedding_provider = embedding_provider
         self.embedding_model = embedding_model
+        self.embedding_base_url = embedding_base_url
+        self.embedding_api_key = embedding_api_key
         self.long_term_enabled = long_term_enabled
         self.embedding_cache_path = self.path.parent / "hf_cache"
         self.embedding_function = self.build_embedding_function()
@@ -164,6 +194,13 @@ class SemanticMemoryManager:
 
     def build_embedding_function(self):
         provider = (self.embedding_provider or "auto").lower()
+
+        if provider in {"lmstudio", "lm_studio", "openai_compatible"}:
+            return LMStudioEmbeddingFunction(
+                self.embedding_model,
+                self.embedding_base_url,
+                self.embedding_api_key,
+            )
 
         if provider in {"auto", "sentence_transformers", "sentence-transformers"}:
             try:

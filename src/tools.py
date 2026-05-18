@@ -14,32 +14,39 @@ try:
     from tooling import ToolContext, ToolExecutor, ToolRegistry
     from tooling.audit import JsonlAuditLog
     from tooling.permissions import ToolPermissionPolicy
-    from tools_catalog import build_local_tool_definitions
+    from tools_catalog import build_local_tool_definitions, build_windows_os_tool_definitions
+    from tools_catalog.rag import build_rag_tool_definitions
 except ModuleNotFoundError:
     from src.config import PROJECT_ROOT, get_settings
     from src.tooling import ToolContext, ToolExecutor, ToolRegistry
     from src.tooling.audit import JsonlAuditLog
     from src.tooling.permissions import ToolPermissionPolicy
-    from src.tools_catalog import build_local_tool_definitions
+    from src.tools_catalog import build_local_tool_definitions, build_windows_os_tool_definitions
+    from src.tools_catalog.rag import build_rag_tool_definitions
 
 
 def build_tool_registry():
     """Construye el registry centralizado con las tools locales."""
     registry = ToolRegistry()
     registry.register_many(build_local_tool_definitions())
+    registry.register_many(build_windows_os_tool_definitions())
+    registry.register_many(build_rag_tool_definitions())
     return registry
 
 
 def build_tool_executor(registry=None, settings=None):
     """Construye el executor con politica local y auditoria."""
     settings = settings or get_settings()
-    allowed_roots = [
-        PROJECT_ROOT.resolve(),
-        Path.cwd().resolve(),
-    ]
+    allowed_roots = [root.resolve() for root in settings.tool_allowed_roots]
+    cwd = Path.cwd().resolve()
+
+    if cwd not in allowed_roots:
+        allowed_roots.append(cwd)
+
     permissions = ToolPermissionPolicy(
         tools_require_confirmation=settings.tools_require_confirmation,
         allowed_roots=allowed_roots,
+        confirm_roots=settings.tool_confirm_read_roots,
     )
     audit_log = JsonlAuditLog(PROJECT_ROOT / "data" / "tool_audit.jsonl")
     return ToolExecutor(

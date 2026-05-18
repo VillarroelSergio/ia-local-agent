@@ -135,14 +135,17 @@ class LocalAgent:
         return assistant_message, normalized_tool_calls
 
     def stream_final_response_after_tools(self, original_user_input, tool_results):
-        """Pide respuesta final con un prompt simple compatible con LM Studio."""
+        """Pide respuesta final con historial reciente compatible con LM Studio."""
         system_prompt = self.prompt_manager.render_system_prompt(
             provider=self.settings.default_provider,
             model=self.settings.default_model,
             memory_context=self.semantic_memory.format_explicit_for_prompt(),
-            semantic_context="No hay memoria semantica relevante.",
+            semantic_context=self.semantic_memory.format_for_prompt(original_user_input),
         )
         tool_context = json.dumps(tool_results, indent=2, ensure_ascii=False)
+        recent_context = self.format_recent_conversation_for_prompt(
+            exclude_current_tool_trace=True,
+        )
         messages = [
             {
                 "role": "system",
@@ -151,7 +154,8 @@ class LocalAgent:
             {
                 "role": "user",
                 "content": (
-                    "Responde al usuario usando estos resultados de herramientas.\n\n"
+                    "Responde al usuario usando el historial reciente y estos resultados de herramientas.\n\n"
+                    f"Historial reciente:\n{recent_context}\n\n"
                     f"Peticion original del usuario:\n{original_user_input}\n\n"
                     f"Resultados de herramientas:\n{tool_context}"
                 ),
@@ -179,6 +183,49 @@ class LocalAgent:
 
         print()
         return assistant_message
+
+    def format_recent_conversation_for_prompt(
+        self,
+        *,
+        limit=12,
+        exclude_current_tool_trace=False,
+    ):
+        """Convierte historial reciente a texto estable para prompts compactos."""
+        messages = self.conversations.get_messages()
+
+        if exclude_current_tool_trace:
+            messages = self.strip_trailing_tool_trace(messages)
+
+        selected = messages[-limit:]
+        lines = []
+
+        for message in selected:
+            label = f"tool:{message.name or 'tool'}" if message.role == "tool" else message.role
+            content = (message.content or "").strip()
+
+            if not content and message.tool_calls:
+                content = "[tool call solicitada]"
+
+            if not content:
+                continue
+
+            lines.append(f"{label}: {content}")
+
+        return "\n".join(lines) if lines else "No hay historial previo relevante."
+
+    def strip_trailing_tool_trace(self, messages):
+        """Elimina assistant/tool del turno actual para no duplicar resultados."""
+        trimmed = list(messages)
+
+        while trimmed and trimmed[-1].role in {"tool", "assistant"}:
+            last = trimmed[-1]
+
+            if last.role == "assistant" and not last.tool_calls:
+                break
+
+            trimmed.pop()
+
+        return trimmed
 
     def parse_tool_arguments(self, tool_call):
         """Convierte los argumentos JSON de una tool call en un diccionario."""

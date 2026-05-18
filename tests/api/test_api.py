@@ -1,0 +1,142 @@
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+from fastapi.testclient import TestClient
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+if str(PROJECT_ROOT / "tests" / "e2e") not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT / "tests" / "e2e"))
+
+from fakes import FakeProvider  # noqa: E402
+
+
+def build_client(monkeypatch, tmp_path, *, rate_limit="120"):
+    monkeypatch.setenv("LOCAL_API_KEY", "test-token")
+    monkeypatch.setenv("SEMANTIC_EMBEDDING_PROVIDER", "local_hash")
+    monkeypatch.setenv("SEMANTIC_EMBEDDING_MODEL", "local-hash")
+    monkeypatch.setenv("CONVERSATIONS_PATH", str(tmp_path / "conversations.sqlite3"))
+    monkeypatch.setenv("CHROMA_PATH", str(tmp_path / "chroma"))
+    monkeypatch.setenv("API_RATE_LIMIT_PER_MINUTE", rate_limit)
+
+    from src.api import dependencies
+    from src.api.app import create_app
+
+    dependencies.api_settings.cache_clear()
+    dependencies.local_agent.cache_clear()
+    dependencies.agent_service.cache_clear()
+    dependencies.memory_service.cache_clear()
+    dependencies.event_bus.cache_clear()
+    app = create_app()
+    client = TestClient(app)
+    dependencies.local_agent().provider = FakeProvider(["Hola desde API"])
+    return client
+
+
+def headers():
+    return {"x-api-key": "test-token"}
+
+
+def test_health_endpoint(monkeypatch, tmp_path):
+    client = build_client(monkeypatch, tmp_path)
+    assert client.get("/api/health").json()["ok"] is True
+
+
+def test_auth_required(monkeypatch, tmp_path):
+    client = build_client(monkeypatch, tmp_path)
+    assert client.get("/api/tools").status_code == 401
+    assert client.get("/api/tools", headers=headers()).status_code == 200
+
+
+def test_chat_basic_mocked(monkeypatch, tmp_path):
+    client = build_client(monkeypatch, tmp_path)
+    response = client.post("/api/chat", headers=headers(), json={"message": "Hola", "use_tools": False})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["message"]["content"] == "Hola desde API"
+    assert body["conversation_id"]
+
+
+def test_streaming_sse(monkeypatch, tmp_path):
+    client = build_client(monkeypatch, tmp_path)
+    with client.stream("POST", "/api/chat/stream", headers=headers(), json={"message": "Hola", "use_tools": False}) as response:
+        text = "".join(response.iter_text())
+    assert "message.delta" in text
+    assert "message.completed" in text
+
+
+def test_websocket_connection(monkeypatch, tmp_path):
+    client = build_client(monkeypatch, tmp_path)
+    with client.websocket_connect("/ws/chat?token=test-token") as ws:
+        ws.send_json({"type": "ping"})
+        assert ws.receive_json()["type"] == "pong"
+
+
+def test_tool_list_and_safe_execution(monkeypatch, tmp_path):
+    client = build_client(monkeypatch, tmp_path)
+    tools = client.get("/api/tools", headers=headers()).json()
+    assert any(item["name"] == "get_system_info" for item in tools)
+    response = client.post("/api/tools/get_system_info/execute", headers=headers(), json={"arguments": {}, "preapproved": True})
+    assert response.status_code == 200
+    assert "ok" in response.json()
+
+
+def test_tool_confirmation_required(monkeypatch, tmp_path):
+    client = build_client(monkeypatch, tmp_path)
+    response = client.post("/api/tools/list_directory/execute", headers=headers(), json={"arguments": {"path": str(tmp_path)}})
+    assert response.status_code == 200
+    assert response.json()["requires_user_action"] in {True, False}
+
+
+def test_memory_crud(monkeypatch, tmp_path):
+    client = build_client(monkeypatch, tmp_path)
+    created = client.post("/api/memory", headers=headers(), json={"content": "Prefiero respuestas breves"}).json()
+    memory_id = created["id"]
+    assert client.get("/api/memory", headers=headers()).status_code == 200
+    assert client.get("/api/memory/search", headers=headers(), params={"query": "respuestas"}).status_code == 200
+    assert client.delete(f"/api/memory/{memory_id}", headers=headers()).json()["deleted"] == memory_id
+
+
+def test_conversations_crud(monkeypatch, tmp_path):
+    client = build_client(monkeypatch, tmp_path)
+    created = client.post("/api/conversations", headers=headers(), json={"title": "Test"}).json()
+    cid = created["id"]
+    assert client.get(f"/api/conversations/{cid}", headers=headers()).json()["title"] == "Test"
+    assert client.get(f"/api/conversations/{cid}/messages", headers=headers()).json()["total"] == 0
+    assert client.delete(f"/api/conversations/{cid}", headers=headers()).json()["deleted"] == cid
+
+
+def test_workflow_run_mock(monkeypatch, tmp_path):
+    client = build_client(monkeypatch, tmp_path)
+    run = client.post("/api/workflows/file_search/run", headers=headers(), json={"input": {"query": "x"}}).json()
+    assert run["status"] == "completed"
+    assert client.get(f"/api/workflows/runs/{run['run_id']}", headers=headers()).status_code == 200
+
+
+def test_cors_restrictive(monkeypatch, tmp_path):
+    client = build_client(monkeypatch, tmp_path)
+    response = client.options(
+        "/api/chat",
+        headers={
+            "Origin": "http://evil.local",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "x-api-key",
+        },
+    )
+    assert "access-control-allow-origin" not in response.headers
+
+
+def test_rate_limit(monkeypatch, tmp_path):
+    client = build_client(monkeypatch, tmp_path, rate_limit="1")
+    assert client.get("/api/tools", headers=headers()).status_code == 200
+    assert client.get("/api/tools", headers=headers()).status_code == 429
+
+
+def test_controlled_errors(monkeypatch, tmp_path):
+    client = build_client(monkeypatch, tmp_path)
+    response = client.get("/api/tools/not_a_tool", headers=headers())
+    assert response.status_code == 404

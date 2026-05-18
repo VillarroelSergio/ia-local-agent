@@ -50,6 +50,7 @@ class LocalAgent:
             long_term_enabled=self.settings.long_term_memory_enabled,
         )
         self.rag = LocalRagService(self.settings)
+        self.native_tools_enabled = self.settings.llm_native_tools_enabled
         self.conversations = ConversationManager(
             ConversationStore(self.settings.conversations_path)
         )
@@ -76,14 +77,19 @@ class LocalAgent:
             lmstudio_compat = self.provider.name == "lmstudio"
 
         extra_reserved_tokens = 0
-        selected_tools = TOOL_SCHEMAS if use_tools else None
+        selected_tools = None
         if use_tools:
             query = self.context_builder.get_last_user_input(
                 self.conversations.get_messages()
             )
             selected_tools = self.select_tool_schemas(query)
-            tools_payload = json.dumps(selected_tools, ensure_ascii=False)
-            extra_reserved_tokens = (len(tools_payload) // 4) + 256
+
+            if not self.native_tools_enabled:
+                selected_tools = None
+
+            if selected_tools:
+                tools_payload = json.dumps(selected_tools, ensure_ascii=False)
+                extra_reserved_tokens = (len(tools_payload) // 4) + 256
 
         messages = self.context_builder.build_messages(
             self.conversations.get_messages(),
@@ -96,7 +102,7 @@ class LocalAgent:
             messages=messages,
             temperature=self.settings.temperature,
             tools=selected_tools,
-            tool_choice="auto" if use_tools else None,
+            tool_choice="auto" if selected_tools else None,
             stream=True,
         )
 
@@ -108,7 +114,7 @@ class LocalAgent:
             provider_open_ms = self._duration_ms(provider_started_at)
             assistant_message, tool_calls, stream_metrics = self.consume_provider_stream(stream)
         except Exception as error:
-            if not (use_tools and self.is_lmstudio_tool_template_error(error)):
+            if not self.is_lmstudio_tool_template_error(error):
                 raise
             fallback_used = True
             fallback_reason = "lmstudio_tool_template_error"
@@ -252,13 +258,19 @@ class LocalAgent:
             for message in messages
             if message.get("role") == "user" and (message.get("content") or "").strip()
         ]
+        system_messages = [
+            (message.get("content") or "").strip()
+            for message in messages
+            if message.get("role") == "system" and (message.get("content") or "").strip()
+        ]
         latest_user = user_messages[-1] if user_messages else "Continua la conversacion."
+        context = system_messages[-1][:6000] if system_messages else ""
         return [{
             "role": "user",
             "content": (
-                "Responde de forma breve y util. El soporte nativo de tools del modelo local fallo, "
-                "asi que no ejecutes acciones: explica que puedes hacerlo cuando el modelo soporte tools "
-                "o cuando usemos el modo textual de tools.\n\n"
+                "Responde de forma breve, util y en el idioma del usuario. "
+                "No inventes datos personales: si no aparecen en el contexto, dilo.\n\n"
+                f"Contexto disponible:\n{context or 'No hay contexto adicional.'}\n\n"
                 f"Peticion del usuario:\n{latest_user}"
             ),
         }]
@@ -299,7 +311,7 @@ class LocalAgent:
         intent_keywords = [
             (groups["windows"], ("ventana", "ventanas", "monitor", "monitores", "centrar", "mueve", "mover", "pon ", "organiza", "maximiza", "minimiza", "cierra", "cerrar", "spotify", "chrome", "vscode", "vs code")),
             (groups["vision"], ("pantalla", "captura", "screenshot", "ocr", "visible", "resume la ventana", "lee el texto", "imagen")),
-            (groups["system"], ("sistema", "cpu", "ram", "memoria", "procesos", "powershell", "servicios")),
+            (groups["system"], ("sistema", "cpu", "ram", "memoria ram", "uso de memoria", "procesos", "powershell", "servicios")),
             (groups["files"], ("archivo", "archivos", "carpeta", "directorio", "readme", "docs", "documentacion", "busca en")),
             (groups["apps"], ("abre", "abrir", "aplicacion", "app", "notepad", "calculadora", "explorer")),
             (groups["clipboard"], ("portapapeles", "clipboard", "copiar", "pegar")),
@@ -311,16 +323,7 @@ class LocalAgent:
                 selected_names.update(names)
 
         if not selected_names:
-            selected_names.update({
-                "get_system_info",
-                "get_running_processes",
-                "get_active_window",
-                "list_windows",
-                "take_screenshot",
-                "summarize_screen",
-                "search_local_knowledge",
-                "open_application",
-            })
+            return []
 
         definitions = [
             definition
@@ -679,6 +682,7 @@ def main():
 
     print("Agente IA local iniciado. Escribe 'salir' para terminar.")
     print(f"Provider: {agent.settings.default_provider} | Modelo: {agent.settings.default_model}")
+    print(f"Tools nativas LLM: {'activadas' if agent.native_tools_enabled else 'desactivadas'}")
     print()
     print("Puedes pedirme tareas como:")
     print("- Ventanas: \"cierra Spotify\", \"maximiza VS Code\", \"pon Chrome a la derecha\", \"organiza mis ventanas\".")

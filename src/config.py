@@ -98,10 +98,12 @@ class Settings:
     lmstudio_base_url: str
     lmstudio_api_key: str
     temperature: float
+    lmstudio_minimal_chat: bool
     agent_timing_log_enabled: bool
     agent_timing_log_console: bool
     max_context_tokens: int
     reserved_response_tokens: int
+    llm_native_tools_enabled: bool
     tools_require_confirmation: bool
     tool_allowed_roots: list[Path]
     tool_confirm_read_roots: list[Path]
@@ -134,10 +136,12 @@ def get_settings():
         lmstudio_base_url=os.getenv("LMSTUDIO_BASE_URL", "http://127.0.0.1:1234/v1"),
         lmstudio_api_key=os.getenv("LMSTUDIO_API_KEY", "lm-studio"),
         temperature=float(os.getenv("LLM_TEMPERATURE", "0.7")),
+        lmstudio_minimal_chat=env_bool("LMSTUDIO_MINIMAL_CHAT", True),
         agent_timing_log_enabled=env_bool("AGENT_TIMING_LOG_ENABLED", True),
         agent_timing_log_console=env_bool("AGENT_TIMING_LOG_CONSOLE", True),
         max_context_tokens=env_int("MAX_CONTEXT_TOKENS", 4096),
         reserved_response_tokens=env_int("RESERVED_RESPONSE_TOKENS", 1024),
+        llm_native_tools_enabled=env_bool("LLM_NATIVE_TOOLS_ENABLED", False),
         tools_require_confirmation=env_bool("TOOLS_REQUIRE_CONFIRMATION", True),
         tool_allowed_roots=env_paths(
             "TOOL_ALLOWED_ROOTS",

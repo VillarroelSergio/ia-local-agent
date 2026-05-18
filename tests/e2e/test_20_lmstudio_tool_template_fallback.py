@@ -64,6 +64,21 @@ class StreamingErrorChunk:
         )
 
 
+class HistoryTemplateErrorProvider:
+    name = "lmstudio"
+
+    def __init__(self):
+        self.requests = []
+
+    def stream(self, request):
+        self.requests.append(request)
+        if len(self.requests) == 1:
+            raise ProviderError(
+                'Fallo provider lmstudio: Error rendering prompt with jinja template: "No user query found in messages."'
+            )
+        return iter([Chunk("Respuesta con contexto minimo.")])
+
+
 def test_lmstudio_streaming_tool_template_error_retries_without_tools(test_settings):
     agent = LocalAgent(settings=test_settings)
     provider = StreamingToolTemplateErrorProvider()
@@ -92,3 +107,20 @@ def test_lmstudio_plain_fallback_collapses_to_single_user_message(test_settings)
     assert len(fallback) == 1
     assert fallback[0]["role"] == "user"
     assert "HerejiaHorus.rar" in fallback[0]["content"]
+
+
+def test_lmstudio_template_error_without_tools_retries_with_minimal_context(test_settings):
+    agent = LocalAgent(settings=test_settings)
+    agent.native_tools_enabled = False
+    provider = HistoryTemplateErrorProvider()
+    agent.provider = provider
+    agent.conversations.append(Message(role="user", content="como me llamo"))
+
+    message, tool_calls = agent.stream_response(use_tools=True)
+
+    assert message == "Respuesta con contexto minimo."
+    assert tool_calls == []
+    assert len(provider.requests) == 2
+    assert provider.requests[0].tools is None
+    assert provider.requests[1].tools is None
+    assert [item["role"] for item in provider.requests[1].messages] == ["user"]

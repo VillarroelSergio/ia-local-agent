@@ -25,6 +25,14 @@ class WindowState(str, Enum):
     UNKNOWN = "unknown"
 
 
+class TaskStatus(str, Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
 @dataclass(frozen=True)
 class Rect:
     left: int
@@ -121,10 +129,43 @@ class AutomationStep:
 
 
 @dataclass(frozen=True)
+class WorkflowCondition:
+    kind: str
+    args: dict[str, Any] = field(default_factory=dict)
+    timeout_seconds: float = 10
+    poll_interval_seconds: float = 0.25
+
+
+@dataclass(frozen=True)
+class ActionHistoryEntry:
+    workflow_id: str
+    step_id: str
+    action: str
+    ok: bool
+    duration_ms: int
+    result: Any | None = None
+    error: str | None = None
+    created_at: datetime = field(default_factory=datetime.now)
+
+
+@dataclass(frozen=True)
 class AutomationWorkflow:
     name: str
     steps: tuple[AutomationStep, ...]
     id: str = field(default_factory=lambda: f"workflow_{uuid4().hex}")
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ScheduledTask:
+    name: str
+    workflow: AutomationWorkflow
+    trigger: str = "manual"
+    interval_seconds: float | None = None
+    enabled: bool = True
+    id: str = field(default_factory=lambda: f"task_{uuid4().hex}")
+    status: TaskStatus = TaskStatus.PENDING
+    next_run_at: datetime | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 

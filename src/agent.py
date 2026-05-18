@@ -16,7 +16,7 @@ try:
     from providers import LLMRequest, ProviderError, build_provider_registry
     from rag import LocalRagService
     from semantic_memory import SemanticMemoryManager
-    from tools import TOOL_SCHEMAS, run_tool
+    from tools import TOOL_REGISTRY, TOOL_SCHEMAS, run_tool
 except ModuleNotFoundError:
     from src.config import get_settings
     from src.context import ApproxTokenCounter, ContextBuilder, SlidingWindowPolicy
@@ -25,7 +25,7 @@ except ModuleNotFoundError:
     from src.providers import LLMRequest, ProviderError, build_provider_registry
     from src.rag import LocalRagService
     from src.semantic_memory import SemanticMemoryManager
-    from src.tools import TOOL_SCHEMAS, run_tool
+    from src.tools import TOOL_REGISTRY, TOOL_SCHEMAS, run_tool
 
 
 class LocalAgent:
@@ -67,8 +67,13 @@ class LocalAgent:
             lmstudio_compat = self.provider.name == "lmstudio"
 
         extra_reserved_tokens = 0
+        selected_tools = TOOL_SCHEMAS if use_tools else None
         if use_tools:
-            tools_payload = json.dumps(TOOL_SCHEMAS, ensure_ascii=False)
+            query = self.context_builder.get_last_user_input(
+                self.conversations.get_messages()
+            )
+            selected_tools = self.select_tool_schemas(query)
+            tools_payload = json.dumps(selected_tools, ensure_ascii=False)
             extra_reserved_tokens = (len(tools_payload) // 4) + 256
 
         messages = self.context_builder.build_messages(
@@ -80,17 +85,47 @@ class LocalAgent:
             model=self.settings.default_model,
             messages=messages,
             temperature=self.settings.temperature,
-            tools=TOOL_SCHEMAS if use_tools else None,
+            tools=selected_tools,
             tool_choice="auto" if use_tools else None,
             stream=True,
         )
 
-        stream = self.provider.stream(request)
+        print("\nIA: ", end="", flush=True)
 
+        try:
+            stream = self.provider.stream(request)
+            assistant_message, tool_calls = self.consume_provider_stream(stream)
+        except Exception as error:
+            if not (use_tools and self.is_lmstudio_tool_template_error(error)):
+                raise
+            print("\nAviso: LM Studio no pudo renderizar tools con el template del modelo. Reintentando sin tools.")
+            fallback_messages = self.build_lmstudio_plain_fallback_messages(messages)
+            request = LLMRequest(
+                model=self.settings.default_model,
+                messages=fallback_messages,
+                temperature=self.settings.temperature,
+                tools=None,
+                tool_choice=None,
+                stream=True,
+                metadata={"tool_fallback": "lmstudio_template_error"},
+            )
+            stream = self.provider.stream(request)
+            assistant_message, tool_calls = self.consume_provider_stream(stream)
+
+        normalized_tool_calls = []
+
+        for index, tool_call in tool_calls.items():
+            if not tool_call["id"]:
+                tool_call["id"] = f"call_{index}"
+
+            normalized_tool_calls.append(tool_call)
+
+        print()
+        return assistant_message, normalized_tool_calls
+
+    def consume_provider_stream(self, stream):
         assistant_message = ""
         tool_calls = {}
-
-        print("\nIA: ", end="", flush=True)
 
         for chunk in stream:
             delta = chunk.choices[0].delta
@@ -123,16 +158,98 @@ class LocalAgent:
                         if tool_call.function.arguments:
                             tool_calls[index]["function"]["arguments"] += tool_call.function.arguments
 
-        normalized_tool_calls = []
+        return assistant_message, tool_calls
 
-        for index, tool_call in tool_calls.items():
-            if not tool_call["id"]:
-                tool_call["id"] = f"call_{index}"
+    def is_lmstudio_tool_template_error(self, error):
+        text = str(error).lower()
+        return (
+            self.provider.name == "lmstudio"
+            and "jinja" in text
+            and "no user query found" in text
+        )
 
-            normalized_tool_calls.append(tool_call)
+    def build_lmstudio_plain_fallback_messages(self, messages):
+        user_messages = [
+            (message.get("content") or "").strip()
+            for message in messages
+            if message.get("role") == "user" and (message.get("content") or "").strip()
+        ]
+        latest_user = user_messages[-1] if user_messages else "Continua la conversacion."
+        return [{
+            "role": "user",
+            "content": (
+                "Responde de forma breve y util. El soporte nativo de tools del modelo local fallo, "
+                "asi que no ejecutes acciones: explica que puedes hacerlo cuando el modelo soporte tools "
+                "o cuando usemos el modo textual de tools.\n\n"
+                f"Peticion del usuario:\n{latest_user}"
+            ),
+        }]
 
-        print()
-        return assistant_message, normalized_tool_calls
+    def select_tool_schemas(self, query):
+        """Reduce schemas enviados al modelo segun la intencion del turno."""
+        normalized = (query or "").lower()
+
+        groups = {
+            "windows": {
+                "get_active_window",
+                "list_windows",
+                "focus_window",
+                "move_window",
+                "resize_window",
+                "maximize_window",
+                "minimize_window",
+                "close_window",
+                "tile_windows_layout",
+                "list_monitors",
+            },
+            "vision": {
+                "take_screenshot",
+                "take_region_screenshot",
+                "take_window_screenshot",
+                "ocr_active_window",
+                "ocr_region",
+                "summarize_screen",
+                "capture_screenshot",
+                "ocr_screen",
+                "get_active_window",
+            },
+            "system": {"get_system_info", "get_running_processes", "run_powershell"},
+            "files": {"list_directory", "read_text_file", "search_files", "search_local_knowledge"},
+            "apps": {"open_application", "open_notepad", "open_calculator", "list_installed_applications"},
+            "clipboard": {"get_clipboard", "set_clipboard"},
+        }
+        intent_keywords = [
+            (groups["windows"], ("ventana", "ventanas", "monitor", "monitores", "centrar", "mueve", "mover", "pon ", "organiza", "maximiza", "minimiza", "cierra", "cerrar", "spotify", "chrome", "vscode", "vs code")),
+            (groups["vision"], ("pantalla", "captura", "screenshot", "ocr", "visible", "resume la ventana", "lee el texto", "imagen")),
+            (groups["system"], ("sistema", "cpu", "ram", "memoria", "procesos", "powershell", "servicios")),
+            (groups["files"], ("archivo", "archivos", "carpeta", "directorio", "readme", "docs", "documentacion", "busca en")),
+            (groups["apps"], ("abre", "abrir", "aplicacion", "app", "notepad", "calculadora", "explorer")),
+            (groups["clipboard"], ("portapapeles", "clipboard", "copiar", "pegar")),
+        ]
+
+        selected_names = set()
+        for names, keywords in intent_keywords:
+            if any(keyword in normalized for keyword in keywords):
+                selected_names.update(names)
+
+        if not selected_names:
+            selected_names.update({
+                "get_system_info",
+                "get_running_processes",
+                "get_active_window",
+                "list_windows",
+                "take_screenshot",
+                "summarize_screen",
+                "search_local_knowledge",
+                "open_application",
+            })
+
+        definitions = [
+            definition
+            for definition in TOOL_REGISTRY.definitions()
+            if definition.name in selected_names
+        ]
+        return [definition.openai_schema() for definition in definitions]
 
     def stream_final_response_after_tools(self, original_user_input, tool_results):
         """Pide respuesta final con historial reciente compatible con LM Studio."""
@@ -483,10 +600,16 @@ def main():
     agent = LocalAgent()
 
     print("Agente IA local iniciado. Escribe 'salir' para terminar.")
-    print("Tools manuales: /tool notepad, /tool calc, /tool sistema")
-    print("Memoria: /remember texto, /memories, /memory_search texto, /memory_stats, /memory_rebuild, /forget id")
-    print("RAG: /rag_index ruta [--project nombre], /rag_search pregunta, /rag_stats")
     print(f"Provider: {agent.settings.default_provider} | Modelo: {agent.settings.default_model}")
+    print()
+    print("Puedes pedirme tareas como:")
+    print("- Ventanas: \"cierra Spotify\", \"maximiza VS Code\", \"pon Chrome a la derecha\", \"organiza mis ventanas\".")
+    print("- Pantalla/OCR: \"resume la ventana actual\", \"lee el texto visible\", \"haz una captura de pantalla\".")
+    print("- Sistema: \"que procesos consumen mas memoria\", \"dame informacion del sistema\".")
+    print("- Archivos/RAG: \"busca en mis docs como ejecutar el agente\", \"lee README.md\", \"lista esta carpeta\".")
+    print("- Memoria: \"recuerda que prefiero respuestas breves\", o usa /remember, /memories, /memory_search.")
+    print()
+    print("Comandos directos: /tool nombre {json}, /rag_index ruta [--project nombre], /rag_search pregunta.")
 
     while True:
         try:

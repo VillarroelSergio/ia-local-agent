@@ -69,12 +69,13 @@ class LMStudioProvider(LLMProvider):
         model = request.model or self.default_model
         started_at = monotonic()
         last_error = None
+        messages = self.prepare_messages(request.messages)
 
         for attempt in range(self.retries + 1):
             try:
                 payload = {
                     "model": model,
-                    "messages": request.messages,
+                    "messages": messages,
                     "temperature": request.temperature,
                     "stream": True,
                 }
@@ -107,6 +108,49 @@ class LMStudioProvider(LLMProvider):
             error=str(last_error),
         )
         raise ProviderError(f"Fallo provider {self.name}: {last_error}") from last_error
+
+    def prepare_messages(self, messages):
+        """Normaliza mensajes para plantillas Jinja estrictas de LM Studio.
+
+        Algunos modelos locales fallan si no encuentran un mensaje ``user`` o
+        si el historial termina en roles que su template no entiende. La capa
+        OpenAI-compatible acepta mas variantes que muchos chat templates.
+        """
+        prepared = []
+
+        for message in messages or []:
+            role = message.get("role", "user")
+            content = message.get("content") or ""
+
+            if role == "tool":
+                role = "user"
+                name = message.get("name") or "tool"
+                content = f"Resultado de la herramienta {name}:\n{content}"
+
+            if role not in {"system", "user", "assistant"}:
+                role = "user"
+
+            if not content.strip() and role != "assistant":
+                continue
+
+            prepared.append({"role": role, "content": content})
+
+        if not any(message["role"] == "user" for message in prepared):
+            prepared.append({
+                "role": "user",
+                "content": "Continua la conversacion con la informacion disponible.",
+            })
+
+        while prepared and prepared[-1]["role"] == "assistant":
+            prepared.pop()
+
+        if not prepared or not any(message["role"] == "user" for message in prepared):
+            prepared.append({
+                "role": "user",
+                "content": "Continua la conversacion con la informacion disponible.",
+            })
+
+        return prepared
 
     def list_models(self):
         try:

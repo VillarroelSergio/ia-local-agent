@@ -12,6 +12,8 @@ REQUIRED_TOOLS = {
     "capture_screenshot",
     "ocr_screen",
     "get_active_window",
+    "list_windows",
+    "list_installed_applications",
     "list_monitors",
 }
 

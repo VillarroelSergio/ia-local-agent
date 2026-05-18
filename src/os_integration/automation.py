@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from time import monotonic
 from typing import Any
 
 from .events import EventBus, EventType, OSEvent
-from .models import AutomationStep, AutomationWorkflow
+from .models import ActionHistoryEntry, AutomationStep, AutomationWorkflow, CaptureTarget, ScreenshotRequest
 from .ocr import OCRService
 from .screenshots import ScreenshotService
 from .security import OSScope, OSSecurityPolicy
@@ -102,6 +103,34 @@ class AutomationEngine:
         if step.action == "wait":
             await asyncio.sleep(float(step.args.get("seconds", 1)))
             return {"waited": step.args.get("seconds", 1)}
+        if step.action == "focus_window":
+            window = self.window_manager.focus_window(step.args.get("handle"), query=step.args.get("query"))
+            return asdict(window)
+        if step.action == "move_window":
+            window = self.window_manager.move_window(
+                step.args.get("handle"),
+                query=step.args.get("query"),
+                left=int(step.args["left"]),
+                top=int(step.args["top"]),
+            )
+            return asdict(window)
+        if step.action == "resize_window":
+            window = self.window_manager.resize_window(
+                step.args.get("handle"),
+                query=step.args.get("query"),
+                left=int(step.args["left"]),
+                top=int(step.args["top"]),
+                width=int(step.args["width"]),
+                height=int(step.args["height"]),
+            )
+            return asdict(window)
+        if step.action == "maximize_window":
+            return asdict(self.window_manager.maximize_window(step.args.get("handle"), query=step.args.get("query")))
+        if step.action == "minimize_window":
+            return asdict(self.window_manager.minimize_window(step.args.get("handle"), query=step.args.get("query")))
+        if step.action == "take_screenshot":
+            result = self.screenshot_service.capture(ScreenshotRequest(target=CaptureTarget(step.args.get("target", "full_screen"))))
+            return {"rect": asdict(result.rect), "cached": result.cached, "path": str(result.path) if result.path else None}
         if step.action == "ocr_contains":
             result = self.ocr_service.read_screen()
             expected = step.args["text"].lower()
@@ -109,18 +138,30 @@ class AutomationEngine:
         raise ValueError(f"Accion de automatizacion no soportada: {step.action}")
 
 
-class WorkflowExecutor:
+class WorkflowRunner:
     def __init__(self, engine: AutomationEngine, *, event_bus: EventBus | None = None):
         self.engine = engine
         self.event_bus = event_bus
+        self.history: list[ActionHistoryEntry] = []
+        self._active_tasks: dict[str, asyncio.Task] = {}
 
     async def run(self, workflow: AutomationWorkflow) -> list[StepResult]:
         if self.event_bus:
             await self.event_bus.publish(OSEvent(EventType.AUTOMATION_STARTED, {"workflow": workflow.name, "id": workflow.id}))
         results: list[StepResult] = []
         for step in workflow.steps:
+            started = monotonic()
             result = await self.engine.execute_step(step)
             results.append(result)
+            self.history.append(ActionHistoryEntry(
+                workflow_id=workflow.id,
+                step_id=step.id,
+                action=step.action,
+                ok=result.ok,
+                duration_ms=int((monotonic() - started) * 1000),
+                result=result.result,
+                error=result.error,
+            ))
             if not result.ok:
                 break
         if self.event_bus:
@@ -130,3 +171,20 @@ class WorkflowExecutor:
                 "ok": all(result.ok for result in results),
             }))
         return results
+
+    def run_background(self, workflow: AutomationWorkflow) -> str:
+        task = asyncio.create_task(self.run(workflow), name=f"workflow-{workflow.id}")
+        self._active_tasks[workflow.id] = task
+        task.add_done_callback(lambda _: self._active_tasks.pop(workflow.id, None))
+        return workflow.id
+
+    def cancel(self, workflow_id: str) -> bool:
+        task = self._active_tasks.get(workflow_id)
+        if task is None:
+            return False
+        self.engine.cancel()
+        task.cancel()
+        return True
+
+
+WorkflowExecutor = WorkflowRunner

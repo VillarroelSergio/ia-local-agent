@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -120,3 +121,33 @@ class EventBus:
                     # Subscribers are isolated so one faulty reaction does not
                     # stop the bus. Audit/logging can be attached as middleware.
                     continue
+
+
+class DebounceMiddleware:
+    def __init__(self, *, window_ms: int = 250):
+        self.window_ms = window_ms
+        self._last_seen: dict[tuple[EventType, str], float] = {}
+
+    def __call__(self, event: OSEvent) -> OSEvent | None:
+        key = (event.event_type, str(sorted(event.payload.items())))
+        now = time.monotonic()
+        previous = self._last_seen.get(key)
+        if previous is not None and (now - previous) * 1000 < self.window_ms:
+            return None
+        self._last_seen[key] = now
+        return event
+
+
+class ThrottleMiddleware:
+    def __init__(self, *, max_events: int = 20, per_seconds: float = 1.0):
+        self.max_events = max_events
+        self.per_seconds = per_seconds
+        self._timestamps: list[float] = []
+
+    def __call__(self, event: OSEvent) -> OSEvent | None:
+        now = time.monotonic()
+        self._timestamps = [item for item in self._timestamps if now - item <= self.per_seconds]
+        if len(self._timestamps) >= self.max_events:
+            return None
+        self._timestamps.append(now)
+        return event

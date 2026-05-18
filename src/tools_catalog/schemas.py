@@ -12,7 +12,8 @@ class OpenApplicationInput(BaseModel):
 
     app_name: str = Field(
         ...,
-        description="Aplicacion permitida: notepad, calculator, explorer, paint, cmd o powershell.",
+        max_length=120,
+        description="Nombre de una aplicacion instalada, por ejemplo notepad, chrome, vscode o calculator.",
     )
 
 

@@ -14,3 +14,5 @@ def test_cli_starts_and_exits_with_salir():
 
     assert completed.returncode == 0
     assert "Agente IA local iniciado" in completed.stdout
+    assert "Puedes pedirme tareas como" in completed.stdout
+    assert "resume la ventana actual" in completed.stdout

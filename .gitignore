@@ -20,3 +20,6 @@ data/tool_audit.jsonl
 data/agent_timing.jsonl
 data/*.log
 *.sqlite3
+ui/desktop/node_modules/
+ui/desktop/dist/
+ui/desktop/src-tauri/target/

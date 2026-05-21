@@ -6,6 +6,7 @@ compatibilidad, pero el nucleo ya puede reutilizarse desde una UI o API local.
 """
 
 import json
+import re
 import sys
 from datetime import datetime
 from time import monotonic
@@ -19,7 +20,8 @@ try:
     from providers import LLMRequest, ProviderError, build_provider_registry
     from rag import LocalRagService
     from semantic_memory import SemanticMemoryManager
-    from tools import TOOL_REGISTRY, TOOL_SCHEMAS, run_tool
+    from tooling import PermissionMode, ToolContext
+    from tools import TOOL_REGISTRY, TOOL_SCHEMAS, build_tool_executor
 except ModuleNotFoundError:
     from src.config import get_settings
     from src.context import ApproxTokenCounter, ContextBuilder, SlidingWindowPolicy
@@ -28,7 +30,8 @@ except ModuleNotFoundError:
     from src.providers import LLMRequest, ProviderError, build_provider_registry
     from src.rag import LocalRagService
     from src.semantic_memory import SemanticMemoryManager
-    from src.tools import TOOL_REGISTRY, TOOL_SCHEMAS, run_tool
+    from src.tooling import PermissionMode, ToolContext
+    from src.tools import TOOL_REGISTRY, TOOL_SCHEMAS, build_tool_executor
 
 
 class LocalAgent:
@@ -51,6 +54,7 @@ class LocalAgent:
         )
         self.rag = LocalRagService(self.settings)
         self.native_tools_enabled = self.settings.llm_native_tools_enabled
+        self.tool_executor = build_tool_executor(TOOL_REGISTRY, self.settings)
         self.conversations = ConversationManager(
             ConversationStore(self.settings.conversations_path)
         )
@@ -116,23 +120,53 @@ class LocalAgent:
         except Exception as error:
             if not self.is_lmstudio_tool_template_error(error):
                 raise
-            fallback_used = True
-            fallback_reason = "lmstudio_tool_template_error"
-            print("\nAviso: LM Studio no pudo renderizar tools con el template del modelo. Reintentando sin tools.")
-            fallback_messages = self.build_lmstudio_plain_fallback_messages(messages)
-            request = LLMRequest(
-                model=self.settings.default_model,
-                messages=fallback_messages,
-                temperature=self.settings.temperature,
-                tools=None,
-                tool_choice=None,
-                stream=True,
-                metadata={"tool_fallback": "lmstudio_template_error"},
-            )
-            provider_started_at = monotonic()
-            stream = self.provider.stream(request)
-            provider_open_ms = self._duration_ms(provider_started_at)
-            assistant_message, tool_calls, stream_metrics = self.consume_provider_stream(stream)
+            if selected_tools:
+                fallback_used = True
+                fallback_reason = "lmstudio_text_tool_protocol"
+                print(
+                    "\nAviso: LM Studio no acepto tools nativas. "
+                    "Reintentando con protocolo textual de tools."
+                )
+                text_tool_messages = self.build_text_tool_protocol_messages(
+                    messages,
+                    selected_tools,
+                )
+                request = LLMRequest(
+                    model=self.settings.default_model,
+                    messages=text_tool_messages,
+                    temperature=self.settings.temperature,
+                    tools=None,
+                    tool_choice=None,
+                    stream=True,
+                    metadata={"tool_fallback": "text_tool_protocol"},
+                )
+                provider_started_at = monotonic()
+                stream = self.provider.stream(request)
+                provider_open_ms = self._duration_ms(provider_started_at)
+                assistant_message, tool_calls, stream_metrics = self.consume_provider_stream(stream)
+                text_tool_call = self.parse_text_tool_call(assistant_message)
+
+                if text_tool_call:
+                    tool_calls = {0: text_tool_call}
+                    assistant_message = ""
+            else:
+                fallback_used = True
+                fallback_reason = "lmstudio_tool_template_error"
+                print("\nAviso: LM Studio no pudo renderizar el historial. Reintentando con contexto minimo.")
+                fallback_messages = self.build_lmstudio_plain_fallback_messages(messages)
+                request = LLMRequest(
+                    model=self.settings.default_model,
+                    messages=fallback_messages,
+                    temperature=self.settings.temperature,
+                    tools=None,
+                    tool_choice=None,
+                    stream=True,
+                    metadata={"tool_fallback": "lmstudio_template_error"},
+                )
+                provider_started_at = monotonic()
+                stream = self.provider.stream(request)
+                provider_open_ms = self._duration_ms(provider_started_at)
+                assistant_message, tool_calls, stream_metrics = self.consume_provider_stream(stream)
 
         normalized_tool_calls = []
 
@@ -292,6 +326,7 @@ class LocalAgent:
                 "tile_windows_layout",
                 "list_monitors",
             },
+            "open_apps": {"get_active_window", "list_windows", "get_running_processes"},
             "vision": {
                 "take_screenshot",
                 "take_region_screenshot",
@@ -310,10 +345,11 @@ class LocalAgent:
         }
         intent_keywords = [
             (groups["windows"], ("ventana", "ventanas", "monitor", "monitores", "centrar", "mueve", "mover", "pon ", "organiza", "maximiza", "minimiza", "cierra", "cerrar", "spotify", "chrome", "vscode", "vs code")),
+            (groups["open_apps"], ("aplicaciones abiertas", "aplicaciones hay abiertas", "apps abiertas", "programas abiertos", "que hay abierto", "que esta abierto", "abiertas ahora", "ventanas abiertas")),
             (groups["vision"], ("pantalla", "captura", "screenshot", "ocr", "visible", "resume la ventana", "lee el texto", "imagen")),
             (groups["system"], ("sistema", "cpu", "ram", "memoria ram", "uso de memoria", "procesos", "powershell", "servicios")),
-            (groups["files"], ("archivo", "archivos", "carpeta", "directorio", "readme", "docs", "documentacion", "busca en")),
-            (groups["apps"], ("abre", "abrir", "aplicacion", "app", "notepad", "calculadora", "explorer")),
+            (groups["files"], ("archivo", "archivos", "carpeta", "directorio", "disco", "unidad", ".pdf", "pdf", "readme", "docs", "documentacion", "busca en", "buscar en", "encuentra", "localiza")),
+            (groups["apps"], ("abre", "abrir", "aplicaciones instaladas", "apps instaladas", "programas instalados", "que aplicaciones hay instaladas", "que apps hay instaladas", "notepad", "calculadora", "explorer")),
             (groups["clipboard"], ("portapapeles", "clipboard", "copiar", "pegar")),
         ]
 
@@ -331,6 +367,74 @@ class LocalAgent:
             if definition.name in selected_names
         ]
         return [definition.openai_schema() for definition in definitions]
+
+    def build_text_tool_protocol_messages(self, messages, selected_tools):
+        """Prepara un fallback donde el modelo decide tools con JSON textual."""
+        tool_specs = []
+        for schema in selected_tools:
+            function = schema.get("function", {})
+            tool_specs.append({
+                "name": function.get("name"),
+                "description": function.get("description"),
+                "parameters": function.get("parameters"),
+            })
+
+        protocol = (
+            "El entorno no soporta tool calling nativo, pero si puedes decidir "
+            "si usar una herramienta mediante un protocolo textual.\n"
+            "Si necesitas una herramienta, responde SOLO con JSON valido en esta forma:\n"
+            "{\"tool\":\"nombre_tool\",\"arguments\":{...}}\n"
+            "Si no necesitas herramienta, responde normalmente.\n"
+            "No simules ejecuciones, progreso, comandos ni resultados. Si usas una "
+            "herramienta, espera al resultado real antes de dar la respuesta final.\n\n"
+            f"Herramientas disponibles:\n{json.dumps(tool_specs, ensure_ascii=False)}"
+        )
+
+        plain_context = self.build_lmstudio_plain_fallback_messages(messages)[0]["content"]
+        return [{
+            "role": "user",
+            "content": f"{protocol}\n\nContexto y peticion:\n{plain_context}",
+        }]
+
+    def parse_text_tool_call(self, assistant_message):
+        """Extrae una tool solicitada por protocolo textual JSON."""
+        text = (assistant_message or "").strip()
+        if not text:
+            return None
+
+        candidates = [text]
+        fenced = re.findall(r"```(?:json)?\s*(\{.*?\})\s*```", text, flags=re.DOTALL | re.IGNORECASE)
+        candidates.extend(fenced)
+
+        object_match = re.search(r"\{.*\}", text, flags=re.DOTALL)
+        if object_match:
+            candidates.append(object_match.group(0))
+
+        for candidate in candidates:
+            try:
+                payload = json.loads(candidate)
+            except json.JSONDecodeError:
+                continue
+
+            if not isinstance(payload, dict):
+                continue
+
+            tool_name = payload.get("tool") or payload.get("name")
+            arguments = payload.get("arguments") or payload.get("args") or {}
+
+            if not isinstance(tool_name, str) or not isinstance(arguments, dict):
+                continue
+
+            return {
+                "id": f"call_text_{uuid4().hex}",
+                "type": "function",
+                "function": {
+                    "name": tool_name,
+                    "arguments": json.dumps(arguments, ensure_ascii=False),
+                },
+            }
+
+        return None
 
     def stream_final_response_after_tools(self, original_user_input, tool_results):
         """Pide respuesta final con historial reciente compatible con LM Studio."""
@@ -450,10 +554,32 @@ class LocalAgent:
         if not self.settings.tools_require_confirmation:
             return True
 
+        if not self.tool_call_requires_confirmation(tool_name, arguments):
+            return True
+
         print(f"\nEl modelo quiere ejecutar '{tool_name}' con argumentos:")
         print(json.dumps(arguments, indent=2, ensure_ascii=False))
         answer = input("Confirmar? (s/n): ")
         return answer.strip().lower() in ["s", "si", "y", "yes"]
+
+    def tool_call_requires_confirmation(self, tool_name, arguments):
+        """Consulta la politica real para no pedir confirmacion a tools seguras."""
+        definition = TOOL_REGISTRY.get(tool_name)
+
+        if definition is None:
+            return True
+
+        try:
+            parsed_arguments = definition.input_schema.model_validate(arguments)
+        except Exception:
+            return False
+
+        decision = self.tool_executor.permissions.evaluate(
+            definition,
+            parsed_arguments,
+            ToolContext(settings=self.settings),
+        )
+        return decision.mode == PermissionMode.CONFIRM
 
     def run_confirmed_tool_call(self, tool_call):
         """Valida, confirma y ejecuta una tool call del modelo."""
@@ -466,7 +592,7 @@ class LocalAgent:
         if not self.confirm_tool(tool_name, arguments):
             return "Tool cancelada por el usuario."
 
-        return run_tool(tool_name, arguments, preapproved=True)
+        return self.tool_executor.execute_sync(tool_name, arguments, require_preapproved=True)
 
     def handle_memory_command(self, user_input):
         """Gestiona comandos manuales de memoria."""
@@ -573,7 +699,7 @@ class LocalAgent:
             print("\nTool: JSON invalido en los argumentos:", error)
             return True
 
-        result = run_tool(tool_name.lower(), arguments, preapproved=True)
+        result = self.tool_executor.execute_sync(tool_name.lower(), arguments, require_preapproved=True)
         print("\nTool:", result)
         return True
 
@@ -679,6 +805,7 @@ def main():
     """Bucle principal de consola del agente."""
     configure_console_output()
     agent = LocalAgent()
+    agent.conversations.create_conversation()
 
     print("Agente IA local iniciado. Escribe 'salir' para terminar.")
     print(f"Provider: {agent.settings.default_provider} | Modelo: {agent.settings.default_model}")

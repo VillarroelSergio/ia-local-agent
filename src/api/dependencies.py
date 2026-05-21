@@ -9,6 +9,7 @@ from src.api.config import ApiSettings, get_api_settings
 from src.api.services.chat_service import AgentService
 from src.api.services.event_service import EventBus
 from src.api.services.memory_service import MemoryService
+from src.api.services.settings_service import SettingsService
 from src.api.services.tool_service import ToolService
 from src.api.services.workflow_service import WorkflowService
 
@@ -42,6 +43,11 @@ def tool_service() -> ToolService:
 def memory_service() -> MemoryService:
     agent = local_agent()
     return MemoryService(agent.semantic_memory, agent=agent)
+
+
+@lru_cache(maxsize=1)
+def settings_service() -> SettingsService:
+    return SettingsService()
 
 
 @lru_cache(maxsize=1)

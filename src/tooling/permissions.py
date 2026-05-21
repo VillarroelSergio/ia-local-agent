@@ -78,7 +78,7 @@ class ToolPermissionPolicy:
         metadata = definition.metadata
         risk_level = metadata.risk_level
 
-        path_error = self._validate_path_arguments(arguments)
+        path_error = self._validate_path_arguments(definition, arguments)
 
         if path_error:
             return PermissionDecision(
@@ -94,7 +94,7 @@ class ToolPermissionPolicy:
                 risk_level=risk_level,
             )
 
-        if self._path_requires_confirmation(arguments):
+        if self._path_requires_confirmation(arguments) and not self._read_only_path_listing_allowed(definition):
             return PermissionDecision(
                 mode=PermissionMode.CONFIRM,
                 reason="La ruta solicitada pertenece a una carpeta personal sensible y requiere confirmacion.",
@@ -114,7 +114,7 @@ class ToolPermissionPolicy:
             risk_level=risk_level,
         )
 
-    def _validate_path_arguments(self, arguments: Any) -> str | None:
+    def _validate_path_arguments(self, definition: ToolDefinition, arguments: Any) -> str | None:
         data = (
             arguments.model_dump()
             if hasattr(arguments, "model_dump") else arguments
@@ -150,7 +150,12 @@ class ToolPermissionPolicy:
                 for root in self.confirm_roots
             )
 
-            if self.allowed_roots and not allowed_by_root and not allowed_by_confirm_root:
+            if (
+                self.allowed_roots
+                and not allowed_by_root
+                and not allowed_by_confirm_root
+                and not self._read_only_path_listing_allowed(definition)
+            ):
                 return f"Ruta fuera de raices permitidas: {resolved}"
 
         return None
@@ -176,6 +181,12 @@ class ToolPermissionPolicy:
                 return True
 
         return False
+
+    def _read_only_path_listing_allowed(self, definition: ToolDefinition) -> bool:
+        return (
+            definition.name in {"list_directory", "search_files"}
+            and definition.metadata.risk_level == RiskLevel.READ_ONLY
+        )
 
     def _is_blocked_path(self, path: Path) -> bool:
         return any(

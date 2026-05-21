@@ -21,6 +21,7 @@ def build_client(monkeypatch, tmp_path, *, rate_limit="120"):
     monkeypatch.setenv("SEMANTIC_EMBEDDING_MODEL", "local-hash")
     monkeypatch.setenv("CONVERSATIONS_PATH", str(tmp_path / "conversations.sqlite3"))
     monkeypatch.setenv("CHROMA_PATH", str(tmp_path / "chroma"))
+    monkeypatch.setenv("SETTINGS_ENV_PATH", str(tmp_path / ".env"))
     monkeypatch.setenv("API_RATE_LIMIT_PER_MINUTE", rate_limit)
 
     from src.api import dependencies
@@ -30,6 +31,7 @@ def build_client(monkeypatch, tmp_path, *, rate_limit="120"):
     dependencies.local_agent.cache_clear()
     dependencies.agent_service.cache_clear()
     dependencies.memory_service.cache_clear()
+    dependencies.settings_service.cache_clear()
     dependencies.event_bus.cache_clear()
     app = create_app()
     client = TestClient(app)
@@ -108,6 +110,18 @@ def test_conversations_crud(monkeypatch, tmp_path):
     assert client.get(f"/api/conversations/{cid}", headers=headers()).json()["title"] == "Test"
     assert client.get(f"/api/conversations/{cid}/messages", headers=headers()).json()["total"] == 0
     assert client.delete(f"/api/conversations/{cid}", headers=headers()).json()["deleted"] == cid
+
+
+def test_settings_masks_secret_and_updates_env(monkeypatch, tmp_path):
+    client = build_client(monkeypatch, tmp_path)
+    body = client.get("/api/settings", headers=headers()).json()
+    assert "*" in body["values"]["LMSTUDIO_API_KEY"]
+    patched = client.patch(
+        "/api/settings",
+        headers=headers(),
+        json={"values": {"DEFAULT_MODEL": "test-model", "LMSTUDIO_API_KEY": body["values"]["LMSTUDIO_API_KEY"]}},
+    ).json()
+    assert patched["values"]["DEFAULT_MODEL"] == "test-model"
 
 
 def test_workflow_run_mock(monkeypatch, tmp_path):

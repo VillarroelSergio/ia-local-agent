@@ -14,7 +14,12 @@ class ApiSettings:
     port: int = 8765
     api_key: str = "local-dev-token"
     dev_mode: bool = True
-    allowed_origins: tuple[str, ...] = ("http://127.0.0.1:1420", "http://localhost:1420")
+    allowed_origins: tuple[str, ...] = (
+        "http://127.0.0.1:1420",
+        "http://localhost:1420",
+        "tauri://localhost",
+        "http://tauri.localhost",
+    )
     request_size_limit: int = 1_000_000
     request_timeout_seconds: int = 120
     rate_limit_per_minute: int = 120
@@ -27,7 +32,7 @@ def get_api_settings() -> ApiSettings:
         origin.strip()
         for origin in os.getenv(
             "API_ALLOWED_ORIGINS",
-            "http://127.0.0.1:1420,http://localhost:1420",
+            "http://127.0.0.1:1420,http://localhost:1420,tauri://localhost,http://tauri.localhost",
         ).split(",")
         if origin.strip()
     )

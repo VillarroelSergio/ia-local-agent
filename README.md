@@ -16,6 +16,7 @@ La meta es evolucionar desde un chat local hacia un copiloto privado para Window
 - Gestion de memoria largo plazo: recuerdos explicitos, busqueda, estadisticas y reindexado.
 - RAG local documental sobre ChromaDB para Markdown, TXT, JSON, CSV, codigo y PDFs.
 - Backend modular: providers, prompts, contexto, conversaciones, memoria, tools y orquestacion inicial.
+- Desktop App MVP con Tauri + React en `ui/desktop`, conectada a la API local.
 
 ## Estructura
 
@@ -39,6 +40,7 @@ ia-local-agent/
 |   |-- tools_catalog/       # Catalogo de tools locales
 |   `-- orchestration/       # Workflows agenticos iniciales
 |-- ui/
+|   `-- desktop/             # Tauri + React desktop MVP
 |-- requirements.txt
 `-- README.md
 ```
@@ -110,6 +112,23 @@ Para salir:
 ```text
 salir
 ```
+
+## Desktop App MVP
+
+La UI desktop vive en `ui/desktop` y consume exclusivamente la API FastAPI local. Primero arranca el backend:
+
+```powershell
+python -m src.api.main
+```
+
+Luego, desde `ui\desktop`:
+
+```powershell
+npm install
+npm run tauri:dev
+```
+
+Detalles completos: [docs/DESKTOP_APP_MVP.md](docs/DESKTOP_APP_MVP.md).
 
 ## Uso Basico
 

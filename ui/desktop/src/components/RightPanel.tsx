@@ -14,6 +14,7 @@ interface Props {
   onConfirmation: (payload: ConfirmationPayload) => void;
 }
 
+/** Controla las pestanas laterales de tools, memoria y actividad de la conversacion actual. */
 export function RightPanel({ conversationId, events, onEvent, onConfirmation }: Props) {
   const [tab, setTab] = useState<PanelTab>("tools");
 

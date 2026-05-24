@@ -7,6 +7,7 @@ interface Props {
   onSettings: () => void;
 }
 
+/** Renderiza la cabecera con estado del backend, proveedor/modelo y acciones globales. */
 export function Header({ backend, onRetry, onSettings }: Props) {
   const status = backend.status ?? {};
   const provider = String(status.provider ?? "provider?");

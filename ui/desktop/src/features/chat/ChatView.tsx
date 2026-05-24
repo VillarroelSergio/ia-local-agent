@@ -11,6 +11,7 @@ interface Props {
   onCancel: () => void;
 }
 
+/** Renderiza el area de mensajes y el composer para enviar o cancelar respuestas del chat. */
 export function ChatView({ messages, busy, activeConversationId, onSend, onCancel }: Props) {
   const [draft, setDraft] = useState("");
   const scroller = useRef<HTMLDivElement>(null);
@@ -19,6 +20,7 @@ export function ChatView({ messages, busy, activeConversationId, onSend, onCance
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
+  /** Valida el borrador, limpia el textarea y delega el envio al contenedor principal. */
   function submit(event: FormEvent) {
     event.preventDefault();
     const value = draft.trim();

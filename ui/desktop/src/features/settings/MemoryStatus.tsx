@@ -2,11 +2,13 @@ import { useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { apiClient } from "../../services/apiClient";
 
+/** Presenta el estado de memoria/RAG y permite reconstruir o buscar contenido indexado. */
 export function MemoryStatus() {
   const [stats, setStats] = useState<Record<string, unknown> | null>(null);
   const [query, setQuery] = useState("");
   const [search, setSearch] = useState<unknown[]>([]);
 
+  /** Carga las estadisticas actuales de memoria desde el backend. */
   async function load() {
     setStats(await apiClient.memoryStats());
   }
@@ -61,6 +63,7 @@ export function MemoryStatus() {
   );
 }
 
+/** Resume resultados heterogeneos de memoria en una cadena corta para la lista. */
 function summarizeMemoryResult(item: unknown) {
   if (!item || typeof item !== "object") return String(item);
   const value = item as Record<string, unknown>;

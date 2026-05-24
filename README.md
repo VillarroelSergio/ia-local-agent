@@ -1,6 +1,6 @@
 # IA Local Agent
 
-Agente IA local para Windows usando modelos open source servidos desde LM Studio y una interfaz Python por consola.
+Agente IA local para Windows usando modelos open source servidos desde LM Studio, backend FastAPI local-first y una interfaz desktop Tauri + React.
 
 La meta es evolucionar desde un chat local hacia un copiloto privado para Windows: con tools, memoria, RAG local, automatizacion, voz y UI propia.
 
@@ -17,6 +17,7 @@ La meta es evolucionar desde un chat local hacia un copiloto privado para Window
 - RAG local documental sobre ChromaDB para Markdown, TXT, JSON, CSV, codigo y PDFs.
 - Backend modular: providers, prompts, contexto, conversaciones, memoria, tools y orquestacion inicial.
 - Desktop App MVP con Tauri + React en `ui/desktop`, conectada a la API local.
+- Build Windows con backend Python empaquetado como sidecar Tauri.
 
 ## Estructura
 
@@ -115,7 +116,9 @@ salir
 
 ## Desktop App MVP
 
-La UI desktop vive en `ui/desktop` y consume exclusivamente la API FastAPI local. Primero arranca el backend:
+La UI desktop vive en `ui/desktop` y consume exclusivamente la API FastAPI local.
+
+Modo desarrollo: primero arranca el backend:
 
 ```powershell
 python -m src.api.main
@@ -128,7 +131,29 @@ npm install
 npm run tauri:dev
 ```
 
+Modo app Windows instalable:
+
+```powershell
+.\scripts\build-windows-app.ps1
+```
+
+Resultado esperado:
+
+```text
+ui\desktop\src-tauri\target\release\bundle\nsis\IA Local Agent Setup.exe
+```
+
+O:
+
+```text
+ui\desktop\src-tauri\target\release\bundle\msi\IA Local Agent.msi
+```
+
+En modo empaquetado, Tauri arranca automaticamente el backend FastAPI como sidecar en `127.0.0.1:8765`, verifica `/api/health`, reutiliza un backend sano si ya existe y cierra el proceso creado por Tauri al salir.
+
 Detalles completos: [docs/DESKTOP_APP_MVP.md](docs/DESKTOP_APP_MVP.md).
+
+Guia de build Windows: [docs/WINDOWS_APP_BUILD.md](docs/WINDOWS_APP_BUILD.md).
 
 ## Uso Basico
 
@@ -157,6 +182,14 @@ La memoria local usa:
 - Cache local del modelo de embeddings: `data/hf_cache/`
 
 Estos datos estan ignorados por Git porque pueden contener informacion privada.
+
+En modo app Windows empaquetada, los datos modificables se redirigen a:
+
+```text
+C:\Users\<usuario>\AppData\Local\IA Local Agent\
+```
+
+para evitar escritura dentro de `Program Files`.
 
 Comandos:
 

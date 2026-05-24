@@ -8,7 +8,14 @@ import type {
   ToolInfo,
 } from "../types/api";
 
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8765";
+export const DEFAULT_API_BASE_URL = "http://127.0.0.1:8765";
+
+export function resolveApiBaseUrl(env: Record<string, string | boolean | undefined> = import.meta.env) {
+  if (env.PROD) return DEFAULT_API_BASE_URL;
+  return typeof env.VITE_API_BASE_URL === "string" && env.VITE_API_BASE_URL ? env.VITE_API_BASE_URL : DEFAULT_API_BASE_URL;
+}
+
+export const API_BASE_URL = resolveApiBaseUrl();
 export const API_TOKEN = import.meta.env.VITE_LOCAL_API_TOKEN ?? "local-dev-token";
 
 type RequestOptions = RequestInit & { auth?: boolean };

@@ -61,7 +61,22 @@ export default function App() {
 
   /** Consulta el estado del backend y actualiza el indicador de conexion de la cabecera. */
   async function refreshBackend() {
-    setBackend(await apiClient.backendStatus());
+    const status = await apiClient.backendStatus();
+    setBackend(status);
+    return status;
+  }
+
+  /** Da margen al sidecar empaquetado para arrancar antes de mostrar un fallo definitivo. */
+  async function waitForBackendReady(timeoutMs = 20000) {
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      const status = await refreshBackend();
+      if (status.connected) return true;
+      setBackend({ connected: false, error: "Arrancando backend local..." });
+      await new Promise((resolve) => window.setTimeout(resolve, 800));
+    }
+    await refreshBackend();
+    return false;
   }
 
   /** Recarga la lista de conversaciones y selecciona la conversacion indicada o la activa. */
@@ -85,12 +100,17 @@ export default function App() {
   }
 
   useEffect(() => {
-    refreshBackend();
-    refreshConversations();
-    const eventSocket = connectEvents(pushEvent, () => pushEvent({ type: "events.disconnected", timestamp: new Date().toISOString() }));
+    let eventSocket: WebSocket | undefined;
+    let cancelled = false;
+    waitForBackendReady().then((ready) => {
+      if (cancelled || !ready) return;
+      refreshConversations();
+      eventSocket = connectEvents(pushEvent, () => pushEvent({ type: "events.disconnected", timestamp: new Date().toISOString() }));
+    });
     const interval = window.setInterval(refreshBackend, 10000);
     return () => {
-      eventSocket.close();
+      cancelled = true;
+      eventSocket?.close();
       window.clearInterval(interval);
     };
   }, []);

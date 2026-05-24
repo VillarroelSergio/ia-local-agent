@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from src.tooling import ToolCall, ToolContext
@@ -34,7 +35,7 @@ class ToolService:
         )
 
     def audit(self, limit=100):
-        path = Path("data/tool_audit.jsonl")
+        path = Path(os.getenv("TOOL_AUDIT_LOG_PATH", "data/tool_audit.jsonl"))
         if not path.exists():
             return []
         lines = path.read_text(encoding="utf-8").splitlines()[-limit:]

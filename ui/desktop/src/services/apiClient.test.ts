@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ApiClient } from "./apiClient";
+import { ApiClient, resolveApiBaseUrl } from "./apiClient";
 
 describe("ApiClient", () => {
   it("builds authenticated conversation requests", async () => {
@@ -21,5 +21,10 @@ describe("ApiClient", () => {
     );
     const headers = fetchMock.mock.calls[0][1].headers as Headers;
     expect(headers.get("x-api-key")).toBe("token");
+  });
+
+  it("uses VITE_API_BASE_URL only in development", () => {
+    expect(resolveApiBaseUrl({ PROD: false, VITE_API_BASE_URL: "http://dev.local" })).toBe("http://dev.local");
+    expect(resolveApiBaseUrl({ PROD: true, VITE_API_BASE_URL: "http://ignored.local" })).toBe("http://127.0.0.1:8765");
   });
 });

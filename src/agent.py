@@ -6,9 +6,11 @@ compatibilidad, pero el nucleo ya puede reutilizarse desde una UI o API local.
 """
 
 import json
+import os
 import re
 import sys
 from datetime import datetime
+from pathlib import Path
 from time import monotonic
 from uuid import uuid4
 
@@ -250,7 +252,8 @@ class LocalAgent:
             "event_type": "agent.turn_timing",
             **payload,
         }
-        log_path = self.settings.project_root / "data" / "agent_timing.jsonl"
+        configured_log_path = os.getenv("AGENT_TIMING_LOG_PATH")
+        log_path = Path(configured_log_path) if configured_log_path else self.settings.project_root / "data" / "agent_timing.jsonl"
         log_path.parent.mkdir(parents=True, exist_ok=True)
 
         try:

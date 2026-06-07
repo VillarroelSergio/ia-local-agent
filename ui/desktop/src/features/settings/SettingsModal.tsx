@@ -15,6 +15,7 @@ const fields = [
   "RAG_TOP_K",
 ];
 
+/** Renderiza el modal de settings y sincroniza valores editables con el backend. */
 export function SettingsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
   const [values, setValues] = useState<Record<string, string | number | boolean>>({});
@@ -34,6 +35,7 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
 
   if (!open) return null;
 
+  /** Guarda los ajustes modificados y muestra el estado de exito o error. */
   async function submit(event: FormEvent) {
     event.preventDefault();
     setSaved(false);

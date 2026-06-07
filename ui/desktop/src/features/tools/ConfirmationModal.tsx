@@ -7,6 +7,7 @@ interface Props {
   onReject: () => void;
 }
 
+/** Muestra una confirmacion bloqueante para aprobar o rechazar la ejecucion de una tool sensible. */
 export function ConfirmationModal({ payload, busy, onConfirm, onReject }: Props) {
   if (!payload) return null;
   return (

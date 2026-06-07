@@ -11,6 +11,7 @@ interface Props {
   onDelete: (id: string) => void;
 }
 
+/** Lista conversaciones y expone acciones para crear, seleccionar, renombrar y borrar chats. */
 export function ConversationSidebar({ conversations, activeId, loading, onNew, onSelect, onRename, onDelete }: Props) {
   return (
     <aside className="sidebar">

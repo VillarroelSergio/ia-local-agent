@@ -2,7 +2,7 @@
 
 Interfaz Tauri + React para usar el backend local-first de IA Local Agent sin duplicar logica del agente en el frontend.
 
-## Arranque
+## Modo Desarrollo
 
 Desde la raiz del proyecto, primero arranca la API:
 
@@ -32,6 +32,37 @@ VITE_LOCAL_API_TOKEN=local-dev-token
 ```
 
 Puedes crear `ui/desktop/.env` a partir de `.env.example` si cambias `LOCAL_API_KEY` o el puerto de la API.
+
+## Modo App Windows
+
+La app empaquetada arranca la UI Tauri y gestiona el backend Python como sidecar. Para generar el instalador:
+
+```powershell
+.\scripts\build-windows-app.ps1
+```
+
+El build completo incrementa automaticamente la version `patch` definida en `VERSION`. Para saltos de release mayores:
+
+```powershell
+.\scripts\build-windows-app.ps1 -VersionPart minor
+.\scripts\build-windows-app.ps1 -VersionPart major
+```
+
+Resultado esperado:
+
+```text
+ui\desktop\src-tauri\target\release\bundle\nsis\IA Local Agent Setup.exe
+```
+
+O:
+
+```text
+ui\desktop\src-tauri\target\release\bundle\msi\IA Local Agent.msi
+```
+
+El sidecar usa `python -m src.api.desktop_entry` empaquetado con PyInstaller. En modo desktop fuerza `API_HOST=127.0.0.1` y guarda datos modificables bajo `AppData\Local\IA Local Agent`, no dentro de `Program Files`.
+
+Detalles completos: [WINDOWS_APP_BUILD.md](WINDOWS_APP_BUILD.md).
 
 ## Endpoints Usados
 
@@ -81,15 +112,18 @@ Los cambios se persisten en el `.env` del proyecto y aplican de forma completa a
 
 ## Limitaciones
 
-- El backend Python se arranca externamente; Tauri aun no lo empaqueta ni lo lanza.
+- En desarrollo, el backend Python se sigue arrancando externamente.
+- En app empaquetada, Tauri arranca o reutiliza el backend local en `127.0.0.1:8765`.
+- LM Studio sigue arrancandose aparte.
 - No hay adjuntos ni gestor visual completo de documentos RAG.
 - La confirmacion de tools se resuelve mediante el endpoint HTTP existente. El WebSocket de chat solo acepta cancelacion y recibe eventos.
 - Los settings persisten en `.env`, pero requieren reiniciar backend para reconstruir provider, memoria, contexto y tool executor.
-- El build Tauri queda preparado para Windows, pero requiere Node/npm, Rust y dependencias Tauri instaladas en la maquina.
+- El token local de MVP es `local-dev-token`; debe evolucionar a token generado por instalacion.
+- ChromaDB, tokenizers o sentence-transformers pueden requerir ajustes adicionales de PyInstaller segun version instalada.
 
 ## Proximos Pasos
 
-- Empaquetar backend Python con Tauri.
+- Endurecer token local generado por instalacion.
 - Docker futuro para el runtime local.
 - Gestor visual RAG con ingestion y estado por documento.
 - Adjuntos en chat.

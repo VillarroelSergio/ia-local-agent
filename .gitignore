@@ -17,6 +17,9 @@ data/rag_manifest.json
 data/tool_audit.jsonl
 *.sqlite3
 *.log
+dist/
+build/pyinstaller/
+ui/desktop/src-tauri/binaries/*.exe
 data/agent_timing.jsonl
 data/*.log
 *.sqlite3

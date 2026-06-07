@@ -7,6 +7,7 @@ interface AuditItem {
   timestamp?: string;
 }
 
+/** Convierte eventos tecnicos recientes en una lista auditiva legible para el usuario. */
 export function TimelinePanel({ events }: { events: TimelineEvent[] }) {
   const auditItems = events.map(toAuditItem).filter(Boolean).slice(0, 80) as AuditItem[];
 
@@ -33,6 +34,7 @@ export function TimelinePanel({ events }: { events: TimelineEvent[] }) {
   );
 }
 
+/** Normaliza un evento del backend en un item visual de auditoria o lo descarta si no aporta valor. */
 function toAuditItem(event: TimelineEvent): AuditItem | null {
   const data = event.data ?? event.payload ?? {};
   const toolName = humanize(String(data.name ?? data.tool_name ?? data.tool ?? ""));
@@ -71,10 +73,12 @@ function toAuditItem(event: TimelineEvent): AuditItem | null {
   }
 }
 
+/** Transforma identificadores tecnicos en texto capitalizado para la actividad. */
 function humanize(value: string) {
   return value.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+/** Formatea timestamps ISO a hora local, manteniendo el texto original si no es una fecha valida. */
 function formatTime(timestamp?: string) {
   if (!timestamp) return "";
   const date = new Date(timestamp);

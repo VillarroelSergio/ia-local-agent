@@ -9,6 +9,7 @@ interface Props {
   onConfirmation: (payload: ConfirmationPayload) => void;
 }
 
+/** Muestra el catalogo de tools, permite filtrar, editar argumentos y ejecutar acciones manuales. */
 export function ToolsPanel({ conversationId, onEvent, onConfirmation }: Props) {
   const [tools, setTools] = useState<ToolInfo[]>([]);
   const [selected, setSelected] = useState<ToolInfo | null>(null);
@@ -17,6 +18,7 @@ export function ToolsPanel({ conversationId, onEvent, onConfirmation }: Props) {
   const [result, setResult] = useState<ToolExecuteResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  /** Carga las tools disponibles y selecciona la primera si aun no hay una activa. */
   async function load() {
     const items = await apiClient.listTools();
     setTools(items);
@@ -27,6 +29,7 @@ export function ToolsPanel({ conversationId, onEvent, onConfirmation }: Props) {
     load().catch((err) => setError(err instanceof Error ? err.message : String(err)));
   }, []);
 
+  /** Ejecuta la tool seleccionada y deriva a confirmacion cuando el backend lo requiere. */
   async function execute() {
     if (!selected) return;
     setError(null);
@@ -113,6 +116,7 @@ export function ToolsPanel({ conversationId, onEvent, onConfirmation }: Props) {
   );
 }
 
+/** Extrae campos editables desde el schema OpenAI-style de una tool. */
 function getArgumentFields(tool: ToolInfo) {
   const functionSchema = tool.schema?.function as { parameters?: { properties?: Record<string, { type?: string; description?: string }> } } | undefined;
   const properties = functionSchema?.parameters?.properties ?? {};
@@ -126,6 +130,7 @@ function getArgumentFields(tool: ToolInfo) {
     }));
 }
 
+/** Construye el payload de argumentos eliminando campos vacios del formulario. */
 function buildArguments(tool: ToolInfo, values: Record<string, string>) {
   const fields = getArgumentFields(tool);
   return fields.reduce<Record<string, unknown>>((payload, field) => {
@@ -135,6 +140,7 @@ function buildArguments(tool: ToolInfo, values: Record<string, string>) {
   }, {});
 }
 
+/** Agrupa las tools por categoria legible para renderizar secciones en el panel. */
 function groupTools(tools: ToolInfo[]) {
   return tools.reduce<Record<string, ToolInfo[]>>((groups, tool) => {
     const category = labelCategory(tool.category);
@@ -143,6 +149,7 @@ function groupTools(tools: ToolInfo[]) {
   }, {});
 }
 
+/** Traduce categorias tecnicas del backend a etiquetas breves en espanol. */
 function labelCategory(category: string) {
   const normalized = category.toLowerCase();
   if (normalized.includes("window")) return "Ventanas";
@@ -155,6 +162,7 @@ function labelCategory(category: string) {
   return humanizeToolName(category);
 }
 
+/** Convierte nombres snake_case en texto capitalizado para mostrar en UI. */
 function humanizeToolName(value: string) {
   return value.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }

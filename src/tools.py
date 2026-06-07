@@ -7,6 +7,7 @@ schemas, permisos, auditoria y ejecucion.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 try:
@@ -48,7 +49,8 @@ def build_tool_executor(registry=None, settings=None):
         allowed_roots=allowed_roots,
         confirm_roots=settings.tool_confirm_read_roots,
     )
-    audit_log = JsonlAuditLog(PROJECT_ROOT / "data" / "tool_audit.jsonl")
+    audit_log_path = Path(os.getenv("TOOL_AUDIT_LOG_PATH", str(PROJECT_ROOT / "data" / "tool_audit.jsonl")))
+    audit_log = JsonlAuditLog(audit_log_path)
     return ToolExecutor(
         registry=registry or build_tool_registry(),
         permissions=permissions,

@@ -8,6 +8,7 @@ $SpecPath = Join-Path $ProjectRoot "build\ia-local-agent-api.spec"
 $DistDir = Join-Path $ProjectRoot "dist"
 $BuildWorkDir = Join-Path $ProjectRoot "build\pyinstaller"
 $BinaryDir = Join-Path $ProjectRoot "ui\desktop\src-tauri\binaries"
+$VersionPath = Join-Path $ProjectRoot "VERSION"
 $ExeName = "ia-local-agent-api.exe"
 $PlainSidecarPath = Join-Path $BinaryDir $ExeName
 
@@ -125,12 +126,17 @@ if (-not (Test-Path $BuiltExe)) {
 
 $TargetTriple = Resolve-TargetTriple
 $TripledSidecarPath = Join-Path $BinaryDir "ia-local-agent-api-$TargetTriple.exe"
+$ReleaseVersion = if (Test-Path $VersionPath) { (Get-Content -LiteralPath $VersionPath -Raw).Trim() } else { "unversioned" }
+$VersionedExePath = Join-Path $BinaryDir "ia-local-agent-api-$ReleaseVersion.exe"
 
 Copy-Item -Force -LiteralPath $BuiltExe -Destination $PlainSidecarPath
 Copy-Item -Force -LiteralPath $BuiltExe -Destination $TripledSidecarPath
+Copy-Item -Force -LiteralPath $BuiltExe -Destination $VersionedExePath
 
 Write-Host "Backend empaquetado:"
 Write-Host "  $BuiltExe"
 Write-Host "Sidecar Tauri:"
 Write-Host "  $TripledSidecarPath"
+Write-Host "Copia versionada:"
+Write-Host "  $VersionedExePath"
 exit 0

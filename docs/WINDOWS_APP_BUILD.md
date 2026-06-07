@@ -87,6 +87,7 @@ Genera:
 ```text
 dist\ia-local-agent-api.exe
 ui\desktop\src-tauri\binaries\ia-local-agent-api-x86_64-pc-windows-msvc.exe
+ui\desktop\src-tauri\binaries\ia-local-agent-api-<version>.exe
 ```
 
 Tauri v2 declara el sidecar como `binaries/ia-local-agent-api`, pero el archivo real debe incluir el target triple de Rust.
@@ -110,21 +111,43 @@ logs\
 
 El script:
 
-1. Empaqueta el backend Python.
-2. Instala dependencias frontend si falta `node_modules`.
-3. Ejecuta `npm run tauri:build`.
-4. Muestra la ruta del instalador.
+1. Incrementa automaticamente la version `patch`.
+2. Empaqueta el backend Python.
+3. Instala dependencias frontend si falta `node_modules`.
+4. Ejecuta `npm run tauri:build`.
+5. Muestra la ruta del instalador.
+
+La version fuente vive en:
+
+```text
+VERSION
+```
+
+El incremento sincroniza `VERSION`, `ui\desktop\package.json`, `ui\desktop\package-lock.json`, `ui\desktop\src-tauri\tauri.conf.json` y `ui\desktop\src-tauri\Cargo.toml`.
+
+Para elegir otro tipo de incremento:
+
+```powershell
+.\scripts\build-windows-app.ps1 -VersionPart minor
+.\scripts\build-windows-app.ps1 -VersionPart major
+```
+
+Para generar un build reproducible sin cambiar version:
+
+```powershell
+.\scripts\build-windows-app.ps1 -NoVersionBump
+```
 
 Resultado esperado:
 
 ```text
-ui\desktop\src-tauri\target\release\bundle\nsis\IA Local Agent Setup.exe
+ui\desktop\src-tauri\target\release\bundle\nsis\IA Local Agent_0.1.1_x64-setup.exe
 ```
 
 O:
 
 ```text
-ui\desktop\src-tauri\target\release\bundle\msi\IA Local Agent.msi
+ui\desktop\src-tauri\target\release\bundle\msi\IA Local Agent_0.1.1_x64_en-US.msi
 ```
 
 ## Lifecycle Desktop

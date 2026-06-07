@@ -41,6 +41,13 @@ La app empaquetada arranca la UI Tauri y gestiona el backend Python como sidecar
 .\scripts\build-windows-app.ps1
 ```
 
+El build completo incrementa automaticamente la version `patch` definida en `VERSION`. Para saltos de release mayores:
+
+```powershell
+.\scripts\build-windows-app.ps1 -VersionPart minor
+.\scripts\build-windows-app.ps1 -VersionPart major
+```
+
 Resultado esperado:
 
 ```text

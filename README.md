@@ -137,6 +137,13 @@ Modo app Windows instalable:
 .\scripts\build-windows-app.ps1
 ```
 
+Cada build completo incrementa automaticamente la version `patch` definida en `VERSION` y sincronizada con Tauri, npm y Cargo. Para elegir otro salto:
+
+```powershell
+.\scripts\build-windows-app.ps1 -VersionPart minor
+.\scripts\build-windows-app.ps1 -VersionPart major
+```
+
 Resultado esperado:
 
 ```text

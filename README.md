@@ -403,14 +403,32 @@ Modulos principales:
 
 ## Roadmap
 
-1. Mejorar seguridad y permisos de tools. En progreso: registry, permisos y auditoria ya separados.
-2. Crear memoria persistente. Hecho: SQLite para conversaciones y ChromaDB para memoria.
-3. Mejorar memoria con busqueda semantica. Hecho base: embeddings locales por LM Studio, busqueda y reindexado.
-4. Anadir RAG local sobre documentos. Hecho base: ingestion, chunking, ChromaDB, CLI y tool.
-5. Integrar embeddings locales. Hecho base con LM Studio y fallback opcional a `sentence-transformers`.
-6. Automatizacion Windows avanzada.
-7. UI propia.
-8. Voz local con STT y TTS.
+Estado actual: el proyecto esta cerrando el Desktop App MVP e iniciando la base tecnica del Overlay Windows.
+
+Leyenda: `OK` hecho, `PARCIAL` funcional pero no cerrado, `PENDIENTE` aun no iniciado como producto.
+
+| Fase | Estado | Notas |
+| --- | --- | --- |
+| 1. Core agente local | PARCIAL | Backend modular, prompts, contexto, conversaciones, memoria y RAG estan operativos. Providers y tool calling siguen en evolucion. |
+| 2. Seguridad, permisos y auditoria | PARCIAL | Confirmaciones, allowlist/denylist, risk levels, auditoria JSONL y bloqueo de superficies sensibles tienen base funcional. |
+| 3. Windows Runtime operativo | PARCIAL | WindowManager, screen capture, OCR base, eventos, hotkeys, workflows y scheduler existen. UI Automation selectors sigue pendiente. |
+| 4. API local-first | PARCIAL | FastAPI, chat, streaming, WebSockets, tools, workflows, confirmaciones y cancelacion estan implementados como MVP. |
+| 5. Desktop App MVP | PARCIAL | Chat, historial, tools, timeline, settings y memoria/RAG existen en la UI. Falta pulido de UX y gestor visual RAG. |
+| 6. Overlay Windows | PARCIAL | Base inicial: endpoint de ventana activa, vista compacta `?mode=overlay`, ventana Tauri dedicada y shortcut `Ctrl+Alt+Space`. |
+| 7. Automatizacion avanzada | PENDIENTE | Workflows reutilizables, UI selectors, planner visual, reintentos y rollback basico. |
+| 8. Voz local | PENDIENTE | Whisper.cpp, Piper TTS y wake word. |
+| 9. Optimizacion | PENDIENTE | Latencia, retrieval, OCR, tokens y eventos. |
+| 10. Multi-modelo / servidor IA | PENDIENTE | Routing por tarea, embeddings separados, Ollama/vLLM y API en red local. |
+| 11. Personalizacion avanzada | PENDIENTE | Datasets, LoRA y especializacion. |
+
+Hito inmediato:
+
+1. Cerrar Desktop App MVP.
+2. Pulir UX del overlay: foco automatico, posicion recordada y estado visual.
+3. Hacer configurable el shortcut global.
+4. Anadir confirmaciones seguras especificas para overlay.
+
+Detalles del overlay: [docs/OVERLAY_WINDOWS.md](docs/OVERLAY_WINDOWS.md).
 
 ## Filosofia
 

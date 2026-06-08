@@ -84,6 +84,21 @@ export interface BackendStatus {
   error?: string;
 }
 
+export interface ActiveWindowResponse {
+  available: boolean;
+  allowed: boolean;
+  reason: string;
+  window: {
+    handle?: number | null;
+    title?: string | null;
+    process_name?: string | null;
+    pid?: number | null;
+    state?: string | null;
+    monitor_index?: number | null;
+    sensitive?: boolean;
+  } | null;
+}
+
 export interface SettingsResponse {
   values: Record<string, string | number | boolean>;
   metadata: Record<string, unknown>;

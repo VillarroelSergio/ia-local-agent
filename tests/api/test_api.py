@@ -131,6 +131,82 @@ def test_workflow_run_mock(monkeypatch, tmp_path):
     assert client.get(f"/api/workflows/runs/{run['run_id']}", headers=headers()).status_code == 200
 
 
+def test_active_window_metadata(monkeypatch, tmp_path):
+    client = build_client(monkeypatch, tmp_path)
+
+    from src.api.routes import system
+    from src.os_integration.models import Rect, WindowInfo, WindowState
+    from src.os_integration.security import OSDecision
+
+    class FakeWindowManager:
+        def get_active_window(self):
+            return WindowInfo(
+                handle=123,
+                title="Editor",
+                process_name="Code.exe",
+                pid=456,
+                rect=Rect(0, 0, 800, 600),
+                monitor_index=0,
+                state=WindowState.NORMAL,
+            )
+
+        def ensure_window_allowed(self, window, scope):
+            return OSDecision(True, "Permitido por test.")
+
+    monkeypatch.setattr(system, "WindowManager", FakeWindowManager)
+    response = client.get("/api/system/active-window", headers=headers())
+    assert response.status_code == 200
+    body = response.json()
+    assert body["available"] is True
+    assert body["allowed"] is True
+    assert body["window"]["title"] == "Editor"
+    assert body["window"]["sensitive"] is False
+
+
+def test_active_window_can_exclude_own_overlay(monkeypatch, tmp_path):
+    client = build_client(monkeypatch, tmp_path)
+
+    from src.api.routes import system
+    from src.os_integration.models import Rect, WindowInfo, WindowState
+    from src.os_integration.security import OSDecision
+
+    overlay = WindowInfo(
+        handle=1,
+        title="IA Local Agent Overlay",
+        process_name="ia-local-agent-desktop.exe",
+        pid=10,
+        rect=Rect(0, 0, 420, 560),
+        monitor_index=0,
+        state=WindowState.NORMAL,
+    )
+    editor = WindowInfo(
+        handle=2,
+        title="Project - Visual Studio Code",
+        process_name="Code.exe",
+        pid=20,
+        rect=Rect(0, 0, 1200, 800),
+        monitor_index=0,
+        state=WindowState.NORMAL,
+    )
+
+    class FakeWindowManager:
+        def get_active_window(self):
+            return overlay
+
+        def list_windows(self, limit=25):
+            return (overlay, editor)
+
+        def ensure_window_allowed(self, window, scope):
+            return OSDecision(True, "Permitido por test.")
+
+    monkeypatch.setattr(system, "WindowManager", FakeWindowManager)
+    response = client.get("/api/system/active-window?exclude_own=true", headers=headers())
+    assert response.status_code == 200
+    body = response.json()
+    assert body["window"]["title"] == "Project - Visual Studio Code"
+    assert body["window"]["process_name"] == "Code.exe"
+
+
 def test_cors_restrictive(monkeypatch, tmp_path):
     client = build_client(monkeypatch, tmp_path)
     response = client.options(

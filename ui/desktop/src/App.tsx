@@ -3,6 +3,7 @@ import { Header } from "./components/Header";
 import { RightPanel } from "./components/RightPanel";
 import { ChatView } from "./features/chat/ChatView";
 import { ConversationSidebar } from "./features/conversations/ConversationSidebar";
+import { OverlayView } from "./features/overlay/OverlayView";
 import { SettingsModal } from "./features/settings/SettingsModal";
 import { ConfirmationModal } from "./features/tools/ConfirmationModal";
 import { apiClient } from "./services/apiClient";
@@ -33,6 +34,7 @@ function confirmationFromEvent(event: TimelineEvent, conversationId?: string): C
 
 /** Coordina el estado principal de la app: conversaciones, chat, eventos, settings y confirmaciones. */
 export default function App() {
+  const isOverlayMode = new URLSearchParams(window.location.search).get("mode") === "overlay";
   const [backend, setBackend] = useState<BackendStatus>({ connected: false });
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | undefined>();
@@ -190,6 +192,15 @@ export default function App() {
     } finally {
       setConfirming(false);
     }
+  }
+
+  if (isOverlayMode) {
+    return (
+      <>
+        <OverlayView messages={messages} busy={busy} activeConversationId={activeId} onSend={sendMessage} onCancel={cancel} />
+        <ConfirmationModal payload={confirmation} busy={confirming} onConfirm={() => confirmTool(true)} onReject={() => confirmTool(false)} />
+      </>
+    );
   }
 
   return (

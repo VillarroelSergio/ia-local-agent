@@ -1,4 +1,5 @@
 import type {
+  ActiveWindowResponse,
   BackendStatus,
   ChatResponse,
   Conversation,
@@ -61,6 +62,12 @@ export class ApiClient {
     } catch (error) {
       return { connected: false, error: error instanceof Error ? error.message : String(error) };
     }
+  }
+
+  /** Devuelve metadata segura de la ventana activa para el futuro overlay. */
+  activeWindow(options: { excludeOwn?: boolean } = {}) {
+    const query = options.excludeOwn ? "?exclude_own=true" : "";
+    return this.request<ActiveWindowResponse>(`/api/system/active-window${query}`);
   }
 
   /** Obtiene todas las conversaciones guardadas. */

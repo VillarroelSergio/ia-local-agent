@@ -2,6 +2,9 @@ import type {
   ActiveWindowResponse,
   BackendStatus,
   ChatResponse,
+  ComputerUseObservation,
+  ComputerUseSession,
+  ComputerUseSessionsResponse,
   Conversation,
   ConversationMessages,
   LmStudioDiagnostics,
@@ -231,6 +234,34 @@ export class ApiClient {
     return this.request<Record<string, unknown>>("/api/memory/rag/index", {
       method: "POST",
       body: JSON.stringify({ path, project_id, force }),
+    });
+  }
+
+  /** Ejecuta un objetivo mediante Computer Use Runtime. */
+  runComputerUse(goal: string, max_iterations = 3) {
+    return this.request<ComputerUseSession>("/api/computer-use/run", {
+      method: "POST",
+      body: JSON.stringify({ goal, max_iterations }),
+    });
+  }
+
+  /** Observa el escritorio sin OCR salvo peticion explicita. */
+  observeComputerUse(include_ocr = false) {
+    return this.request<ComputerUseObservation>("/api/computer-use/observe", {
+      method: "POST",
+      body: JSON.stringify({ include_ocr }),
+    });
+  }
+
+  /** Lista sesiones recientes de Computer Use. */
+  listComputerUseSessions(limit = 10) {
+    return this.request<ComputerUseSessionsResponse>(`/api/computer-use/sessions?limit=${limit}`);
+  }
+
+  /** Cancela una sesion activa de Computer Use si sigue en ejecucion. */
+  cancelComputerUseSession(sessionId: string) {
+    return this.request<{ cancelled: boolean; session_id: string }>(`/api/computer-use/sessions/${encodeURIComponent(sessionId)}/cancel`, {
+      method: "POST",
     });
   }
 }

@@ -22,6 +22,7 @@ def build_client(monkeypatch, tmp_path, *, rate_limit="120"):
     monkeypatch.setenv("CONVERSATIONS_PATH", str(tmp_path / "conversations.sqlite3"))
     monkeypatch.setenv("CHROMA_PATH", str(tmp_path / "chroma"))
     monkeypatch.setenv("SETTINGS_ENV_PATH", str(tmp_path / ".env"))
+    monkeypatch.setenv("COMPUTER_USE_SESSIONS_PATH", str(tmp_path / "computer_use.sqlite3"))
     monkeypatch.setenv("API_RATE_LIMIT_PER_MINUTE", rate_limit)
 
     from src.api import dependencies
@@ -33,6 +34,7 @@ def build_client(monkeypatch, tmp_path, *, rate_limit="120"):
     dependencies.memory_service.cache_clear()
     dependencies.settings_service.cache_clear()
     dependencies.event_bus.cache_clear()
+    dependencies.computer_use_service.cache_clear()
     app = create_app()
     client = TestClient(app)
     dependencies.local_agent().provider = FakeProvider(["Hola desde API"])
@@ -282,6 +284,31 @@ def test_workflow_run_mock(monkeypatch, tmp_path):
     run = client.post("/api/workflows/file_search/run", headers=headers(), json={"input": {"query": "x"}}).json()
     assert run["status"] == "completed"
     assert client.get(f"/api/workflows/runs/{run['run_id']}", headers=headers()).status_code == 200
+
+
+def test_computer_use_observe_run_sessions_and_cancel(monkeypatch, tmp_path):
+    client = build_client(monkeypatch, tmp_path)
+
+    observe = client.post("/api/computer-use/observe", headers=headers(), json={"include_ocr": False})
+    assert observe.status_code == 200
+    assert "screen_summary" in observe.json()
+
+    run = client.post(
+        "/api/computer-use/run",
+        headers=headers(),
+        json={"goal": "observa el estado actual", "max_iterations": 1},
+    )
+    assert run.status_code == 200
+    session = run.json()
+    assert session["goal"] == "observa el estado actual"
+    assert session["status"] in {"completed", "aborted", "failed"}
+
+    sessions = client.get("/api/computer-use/sessions", headers=headers()).json()
+    assert any(item["id"] == session["id"] for item in sessions["sessions"])
+
+    cancel = client.post(f"/api/computer-use/sessions/{session['id']}/cancel", headers=headers())
+    assert cancel.status_code == 200
+    assert cancel.json()["session_id"] == session["id"]
 
 
 def test_active_window_metadata(monkeypatch, tmp_path):

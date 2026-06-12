@@ -32,6 +32,13 @@ class EventType(str, Enum):
     HOTKEY_PRESSED = "hotkey.pressed"
     AUTOMATION_STARTED = "automation.started"
     AUTOMATION_FINISHED = "automation.finished"
+    COMPUTER_USE_STARTED = "computer_use.started"
+    COMPUTER_USE_OBSERVED = "computer_use.observed"
+    COMPUTER_USE_PLANNED = "computer_use.planned"
+    COMPUTER_USE_EXECUTED = "computer_use.executed"
+    COMPUTER_USE_VERIFIED = "computer_use.verified"
+    COMPUTER_USE_FAILED = "computer_use.failed"
+    COMPUTER_USE_COMPLETED = "computer_use.completed"
     ERROR = "runtime.error"
 
 

@@ -135,3 +135,32 @@ export interface ConfirmationPayload {
   policy_decision?: string | null;
   source?: "chat" | "tools";
 }
+
+export interface ComputerUseSession {
+  id: string;
+  goal: string;
+  status: string;
+  state: Record<string, unknown>;
+  observations: Record<string, unknown>[];
+  actions: Record<string, unknown>[];
+  created_at: string;
+  updated_at: string;
+  completed_at?: string | null;
+  error?: string | null;
+}
+
+export interface ComputerUseSessionsResponse {
+  sessions: ComputerUseSession[];
+}
+
+export interface ComputerUseObservation {
+  active_window?: Record<string, unknown> | null;
+  open_windows?: Record<string, unknown>[];
+  controls?: Record<string, unknown>[];
+  visible_text?: string;
+  screen_summary?: string;
+  source_order?: string[];
+  used_sources?: string[];
+  timestamp?: string;
+  metadata?: Record<string, unknown>;
+}

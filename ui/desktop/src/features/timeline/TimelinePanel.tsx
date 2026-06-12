@@ -63,6 +63,22 @@ function toAuditItem(event: TimelineEvent): AuditItem | null {
       return { title: "Workflow iniciado", detail: "El agente empezo un flujo de trabajo.", tone: "neutral", timestamp: event.timestamp };
     case "workflow.finished":
       return { title: "Workflow terminado", detail: "El flujo de trabajo termino.", tone: "success", timestamp: event.timestamp };
+    case "computer_use.started":
+      return { title: "Computer Use iniciado", detail: String(data.goal ?? "Objetivo en ejecucion."), tone: "neutral", timestamp: event.timestamp };
+    case "computer_use.observed":
+      return { title: "Escritorio observado", detail: String(data.summary ?? "Observacion actualizada."), tone: "neutral", timestamp: event.timestamp };
+    case "computer_use.planned":
+      return { title: "Plan generado", detail: "Computer Use preparo los siguientes pasos.", tone: "neutral", timestamp: event.timestamp };
+    case "computer_use.executed":
+      return { title: "Accion ejecutada", detail: data.ok === false ? "La accion fallo." : "La accion termino.", tone: data.ok === false ? "error" : "success", timestamp: event.timestamp };
+    case "computer_use.verified":
+      return { title: "Resultado verificado", detail: String(data.reason ?? "Verificacion completada."), tone: data.ok === false ? "warning" : "success", timestamp: event.timestamp };
+    case "computer_use.completed":
+      return { title: "Computer Use completado", detail: String(data.session_id ?? "Sesion completada."), tone: "success", timestamp: event.timestamp };
+    case "computer_use.cancelled":
+      return { title: "Computer Use cancelado", detail: String(data.session_id ?? "Sesion cancelada."), tone: "warning", timestamp: event.timestamp };
+    case "computer_use.failed":
+      return { title: "Computer Use con error", detail: String(data.message ?? data.error ?? "No pudo completarse."), tone: "error", timestamp: event.timestamp };
     case "error":
       return { title: "Error", detail: String(data.message ?? "Ha ocurrido un error."), tone: "error", timestamp: event.timestamp };
     default:

@@ -7,6 +7,7 @@ from fastapi import Request
 from src.agent import LocalAgent
 from src.api.config import ApiSettings, get_api_settings
 from src.api.services.chat_service import AgentService
+from src.api.services.computer_use_service import ComputerUseService
 from src.api.services.event_service import EventBus
 from src.api.services.memory_service import MemoryService
 from src.api.services.settings_service import SettingsService
@@ -53,6 +54,11 @@ def settings_service() -> SettingsService:
 @lru_cache(maxsize=1)
 def workflow_service() -> WorkflowService:
     return WorkflowService()
+
+
+@lru_cache(maxsize=1)
+def computer_use_service() -> ComputerUseService:
+    return ComputerUseService()
 
 
 def request_id(request: Request) -> str:

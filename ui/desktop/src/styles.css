@@ -408,7 +408,7 @@ pre {
 
 .panel-tabs {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 6px;
   padding: 8px;
   border-bottom: 1px solid #2b2a27;
@@ -439,6 +439,7 @@ pre {
 }
 
 .tools-panel,
+.computer-use-panel,
 .timeline-panel,
 .memory-card {
   height: 100%;
@@ -723,4 +724,93 @@ textarea {
   margin-top: 12px;
   color: #c8c0b3;
   font-size: 13px;
+}
+
+.computer-use-panel {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+.computer-use-panel textarea {
+  min-height: 76px;
+}
+
+.computer-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr 38px;
+  gap: 8px;
+}
+
+.computer-status-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.computer-status-grid div,
+.computer-section {
+  border: 1px solid #302e2a;
+  border-radius: 8px;
+  padding: 10px;
+  background: #201f1c;
+}
+
+.computer-status-grid span,
+.computer-section small {
+  display: block;
+  color: #9f978a;
+  font-size: 12px;
+}
+
+.computer-status-grid strong {
+  display: block;
+  margin-top: 4px;
+  color: #f4f0e8;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.computer-section h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+
+.computer-section p {
+  margin: 0 0 6px;
+  color: #c8c0b3;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.computer-session-list {
+  display: grid;
+  gap: 6px;
+  max-height: 190px;
+  overflow: auto;
+}
+
+.computer-session-list button {
+  min-width: 0;
+  border: 1px solid #33312d;
+  border-radius: 8px;
+  padding: 8px;
+  text-align: left;
+  color: #eee7dc;
+  background: #24231f;
+}
+
+.computer-session-list strong,
+.computer-session-list span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.computer-session-list span {
+  color: #9f978a;
+  font-size: 12px;
 }

@@ -7,13 +7,17 @@ use std::{
 };
 
 use serde::Serialize;
-use tauri::{Emitter, Manager, WindowEvent};
+use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use tauri_plugin_shell::{process::CommandChild, ShellExt};
+use windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
 
 const API_HOST: &str = "127.0.0.1";
 const API_PORT: u16 = 8765;
 const HEALTH_PATH: &str = "/api/health";
 const SIDECAR_NAME: &str = "ia-local-agent-api";
+const MAIN_WINDOW_LABEL: &str = "main";
+const OVERLAY_WINDOW_LABEL: &str = "overlay";
 
 #[derive(Default)]
 struct BackendProcess {
@@ -31,6 +35,11 @@ enum HealthState {
 struct BackendLifecycleEvent {
     state: String,
     message: String,
+}
+
+#[derive(Clone, Serialize)]
+struct OverlayContextEvent {
+    handle: isize,
 }
 
 fn healthcheck() -> HealthState {
@@ -179,19 +188,111 @@ fn shutdown_backend(app: &tauri::AppHandle) {
     }
 }
 
+fn ensure_overlay_window(app: &tauri::AppHandle) -> tauri::Result<()> {
+    if app.get_webview_window(OVERLAY_WINDOW_LABEL).is_some() {
+        return Ok(());
+    }
+
+    WebviewWindowBuilder::new(
+        app,
+        OVERLAY_WINDOW_LABEL,
+        WebviewUrl::App("index.html?mode=overlay".into()),
+    )
+    .title("IA Local Agent Overlay")
+    .inner_size(420.0, 560.0)
+    .min_inner_size(360.0, 520.0)
+    .resizable(true)
+    .decorations(true)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .visible(false)
+    .build()?;
+
+    Ok(())
+}
+
+fn toggle_overlay(app: &tauri::AppHandle) {
+    if ensure_overlay_window(app).is_err() {
+        return;
+    }
+
+    let Some(window) = app.get_webview_window(OVERLAY_WINDOW_LABEL) else {
+        return;
+    };
+
+    match window.is_visible() {
+        Ok(true) => {
+            let _ = window.hide();
+        }
+        _ => {
+            let _ = window.show();
+            let _ = window.set_focus();
+            let _ = window.set_always_on_top(true);
+            let _ = window.emit("overlay-opened", ());
+            let app = app.clone();
+            thread::spawn(move || {
+                thread::sleep(Duration::from_millis(60));
+                refresh_overlay_context(app);
+            });
+        }
+    }
+}
+
+fn refresh_overlay_context(app: tauri::AppHandle) {
+    let Some(window) = app.get_webview_window(OVERLAY_WINDOW_LABEL) else {
+        return;
+    };
+    let _ = window.hide();
+    thread::sleep(Duration::from_millis(180));
+    let foreground = unsafe { GetForegroundWindow() };
+    let _ = window.show();
+    let _ = window.set_focus();
+    let _ = window.set_always_on_top(true);
+    if !foreground.is_null() {
+        let _ = window.emit("overlay-context", OverlayContextEvent { handle: foreground as isize });
+    }
+}
+
+#[tauri::command]
+fn refresh_overlay_context_command(app: tauri::AppHandle) {
+    refresh_overlay_context(app);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 /// Construye y ejecuta la aplicacion Tauri con los plugins necesarios para la UI desktop.
 pub fn run() {
+    let overlay_shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::Space);
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .setup(|app| {
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(move |app, shortcut, event| {
+                    if shortcut == &overlay_shortcut && event.state() == ShortcutState::Pressed {
+                        toggle_overlay(app);
+                    }
+                })
+                .build(),
+        )
+        .setup(move |app| {
             app.manage(BackendProcess::default());
+            ensure_overlay_window(app.handle())?;
+            app.global_shortcut().register(overlay_shortcut)?;
             let handle = app.handle().clone();
             thread::spawn(move || ensure_backend(handle));
             Ok(())
         })
+        .invoke_handler(tauri::generate_handler![refresh_overlay_context_command])
         .on_window_event(|window, event| {
-            if matches!(event, WindowEvent::CloseRequested { .. }) {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == OVERLAY_WINDOW_LABEL {
+                    api.prevent_close();
+                    let _ = window.hide();
+                    return;
+                }
+            }
+
+            if window.label() == MAIN_WINDOW_LABEL && matches!(event, WindowEvent::CloseRequested { .. }) {
                 shutdown_backend(window.app_handle());
             }
         })

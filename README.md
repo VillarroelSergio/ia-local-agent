@@ -1,417 +1,212 @@
 # IA Local Agent
 
-Agente IA local para Windows usando modelos open source servidos desde LM Studio, backend FastAPI local-first y una interfaz desktop Tauri + React.
+Agente IA local para Windows. Usa LM Studio como proveedor LLM, FastAPI como backend local-first y una app Tauri + React como interfaz desktop.
 
-La meta es evolucionar desde un chat local hacia un copiloto privado para Windows: con tools, memoria, RAG local, automatizacion, voz y UI propia.
+Objetivo: evolucionar de chat local a copiloto privado para Windows, con memoria, RAG, tools, overlay contextual, automatizacion segura y voz local.
 
 ## Estado Actual
 
-- Chat local con LM Studio mediante API compatible con OpenAI.
-- Streaming de respuestas en consola.
-- Historial persistente en SQLite.
-- Tool calling automatico con confirmacion del usuario.
-- Tools manuales desde consola.
-- Memoria persistente y semantica con ChromaDB.
-- Embeddings locales via LM Studio para memoria y RAG.
-- Gestion de memoria largo plazo: recuerdos explicitos, busqueda, estadisticas y reindexado.
-- RAG local documental sobre ChromaDB para Markdown, TXT, JSON, CSV, codigo y PDFs.
-- Backend modular: providers, prompts, contexto, conversaciones, memoria, tools y orquestacion inicial.
-- Desktop App MVP con Tauri + React en `ui/desktop`, conectada a la API local.
-- Build Windows con backend Python empaquetado como sidecar Tauri.
+El proyecto esta en cierre de Desktop App MVP e inicio de Overlay Windows.
 
-## Estructura
+Hecho o funcional como base:
 
-```text
-ia-local-agent/
-|-- data/                    # Datos locales ignorados por Git
-|-- docs/
-|-- rag/
-|-- src/
-|   |-- agent.py             # Orquestador principal
-|   |-- cli.py               # Entrada CLI
-|   |-- config.py            # Configuracion
-|   |-- context.py           # Construccion y recorte de contexto
-|   |-- conversations.py     # SQLite e historial
-|   |-- prompts.py           # System prompt
-|   |-- providers.py         # Providers LLM
-|   |-- semantic_memory.py   # ChromaDB + embeddings
-|   |-- rag/                 # Ingestion, chunking, ChromaDB y retrieval documental
-|   |-- tools.py             # Fachada de tools
-|   |-- tooling/             # Registry, permisos, auditoria, ejecucion
-|   |-- tools_catalog/       # Catalogo de tools locales
-|   `-- orchestration/       # Workflows agenticos iniciales
-|-- ui/
-|   `-- desktop/             # Tauri + React desktop MVP
-|-- requirements.txt
-`-- README.md
-```
+- Backend FastAPI local en `127.0.0.1:8765`.
+- Chat, streaming, WebSocket y conversaciones persistentes.
+- Memoria semantica y RAG local sobre ChromaDB.
+- Tool calling con registry, permisos, confirmaciones y auditoria JSONL.
+- Desktop App Tauri + React con chat, historial, tools, timeline, settings y memoria.
+- Runtime Windows base: ventanas, capturas, OCR base, eventos, hotkeys, workflows y scheduler.
+- Overlay Tauri inicial con `Ctrl+Alt+Space`, ventana compacta y lectura segura de ventana activa.
 
-## Requisitos
+Problemas conocidos:
 
-- Windows.
-- Python.
-- LM Studio con servidor local activado.
-- Un modelo cargado en LM Studio.
+- El overlay ya recibe el `HWND` anterior desde Tauri, pero hay que probarlo y refinarlo con apps reales.
+- Si el chat devuelve `Sin contenido`, revisar conexion con LM Studio y el ID exacto del modelo.
+- UI Automation selectors todavia no esta implementado.
+- OCR y workflows existen como base, pero no estan cerrados como experiencia de usuario.
 
-Dependencias principales:
+## Implementado En La Ultima Iteracion
 
-```text
-openai
-psutil
-chromadb
-pypdf
-```
+- Diagnostico LM Studio en `/api/system/lmstudio` y boton `Probar LM Studio` en settings.
+- Errores de provider visibles en chat, sin burbujas vacias.
+- Contexto nativo inicial del overlay: Tauri emite `overlay-context` con el `HWND` anterior.
+- Foco automatico del composer al abrir overlay.
+- Persistencia basica de posicion/tamano del overlay en `localStorage`.
+- Boton `Usar ventana` para enviar metadata de ventana como contexto.
+- Boton `Leer texto` con confirmacion y solicitud OCR bajo demanda.
+- Settings iniciales para overlay: habilitado, shortcut y always-on-top.
+- Gestor RAG visual minimo: stats, ruta, proyecto e indexacion.
+- Endpoints nuevos: `/api/system/window/{handle}`, `/api/memory/rag/stats`, `/api/memory/rag/index`.
+- Selector manual de ventanas en overlay mediante `/api/system/windows`.
+- Selector de modelo detectado en Settings tras `Probar LM Studio`.
+- OCR desde overlay conectado a tools `focus_window` + `ocr_active_window`.
+- Lista basica de documentos indexados en el panel RAG.
 
-Instalacion:
+## Arranque Rapido
 
-```powershell
-venv\Scripts\python.exe -m pip install -r requirements.txt
-```
-
-Nota: existe una carpeta antigua llamada `requeriments.txt`; las dependencias actuales viven en `requirements.txt`.
-
-## Configuracion LM Studio
-
-Servidor local:
-
-```text
-http://127.0.0.1:1234
-```
-
-Base URL OpenAI-compatible:
+1. Arranca LM Studio.
+2. Activa el servidor OpenAI-compatible en:
 
 ```text
 http://127.0.0.1:1234/v1
 ```
 
-Configuracion recomendada:
+3. Comprueba que `.env` apunta al modelo cargado:
 
-```text
-Modelo: Qwen3.5 9B Q4_K_M
-Context Length: 4096
-GPU Offload: MAX
-Flash Attention: ON si esta disponible
-Batch Size: 512-1024
+```env
+DEFAULT_PROVIDER=lmstudio
+DEFAULT_MODEL=qwen/qwen3.5-9b
+LMSTUDIO_BASE_URL=http://127.0.0.1:1234/v1
+LMSTUDIO_API_KEY=lm-studio
 ```
 
-## Ejecutar
-
-Desde la raiz del proyecto:
+4. Backend manual desde la raiz:
 
 ```powershell
-venv\Scripts\python.exe src\cli.py
+venv\Scripts\python.exe -m src.api.main
 ```
 
-Entrada equivalente:
+5. App desktop:
 
 ```powershell
-venv\Scripts\python.exe src\agent.py
-```
-
-Para salir:
-
-```text
-salir
-```
-
-## Desktop App MVP
-
-La UI desktop vive en `ui/desktop` y consume exclusivamente la API FastAPI local.
-
-Modo desarrollo: primero arranca el backend:
-
-```powershell
-python -m src.api.main
-```
-
-Luego, desde `ui\desktop`:
-
-```powershell
-npm install
+cd ui\desktop
 npm run tauri:dev
 ```
 
-Modo app Windows instalable:
+En modo Tauri, la app puede arrancar el backend empaquetado como sidecar. Si levantas el backend manualmente, asegurate de no tener otro proceso usando el puerto `8765`.
+
+## Comprobaciones
+
+API:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8765/api/health
+Invoke-RestMethod http://127.0.0.1:8765/api/status
+Invoke-RestMethod http://127.0.0.1:8765/api/metrics
+```
+
+LM Studio:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:1234/v1/models
+```
+
+Chat directo:
+
+```powershell
+$body = @{ message = "Responde solo OK"; use_tools = $false; stream = $false } | ConvertTo-Json
+Invoke-RestMethod `
+  -Uri http://127.0.0.1:8765/api/chat `
+  -Method Post `
+  -ContentType "application/json" `
+  -Headers @{ "x-api-key" = "local-dev-token" } `
+  -Body $body
+```
+
+Tests:
+
+```powershell
+venv\Scripts\python.exe -m pytest tests\api\test_api.py
+cd ui\desktop
+npm run build
+cd src-tauri
+cargo check
+```
+
+## Overlay
+
+Shortcut:
+
+```text
+Ctrl + Alt + Space
+```
+
+Estado actual:
+
+- Abre/cierra una ventana Tauri compacta.
+- Muestra metadata segura de una ventana activa: titulo, proceso, pid, estado y monitor.
+- No captura pantalla automaticamente.
+- No ejecuta OCR continuo.
+- No automatiza acciones sensibles sin confirmacion.
+
+Endpoint:
+
+```http
+GET /api/system/active-window?exclude_own=true
+```
+
+Siguiente mejora necesaria: capturar en Rust el `HWND` anterior justo antes de mostrar el overlay y enviarlo a React. Eso hara fiable el contexto de ventana.
+
+Detalles: [docs/OVERLAY_WINDOWS.md](docs/OVERLAY_WINDOWS.md).
+
+## Estructura
+
+```text
+src/
+  agent.py                 Orquestador principal
+  api/                     FastAPI, rutas, WebSockets y servicios
+  rag/                     Ingestion, chunking y retrieval local
+  tooling/                 Registry, permisos, auditoria y ejecucion de tools
+  tools_catalog/           Tools locales y Windows
+  os_integration/          Runtime Windows base
+  orchestration/           Workflows agenticos iniciales
+ui/desktop/
+  src/                     React
+  src-tauri/               Tauri/Rust, sidecar y overlay
+docs/                      Documentacion tecnica
+data/                      Datos locales ignorados por Git
+```
+
+## Roadmap De Implementacion
+
+Leyenda: `OK`, `PARCIAL`, `PENDIENTE`.
+
+| Area | Estado | Pendiente |
+| --- | --- | --- |
+| Core agente local | PARCIAL | Robustecer providers, tool calling, errores y recuperacion de turnos incompletos. |
+| LM Studio | PARCIAL | Diagnostico basico implementado; falta selector de modelo desde UI y autocorreccion de `.env`. |
+| API local-first | PARCIAL | Mejor manejo de errores de provider, cancelacion consistente, endpoints de diagnostico LM Studio. |
+| Desktop App MVP | PARCIAL | Pulir empty states, errores visibles, gestor RAG visual, adjuntos y mejor feedback de streaming. |
+| Overlay Windows | PARCIAL | Contexto nativo inicial, foco y bounds basicos; falta endurecer deteccion, shortcut configurable real en Rust. |
+| Seguridad | PARCIAL | Confirmaciones seguras en overlay, politica por app, modo seguro visible, auditoria mas legible. |
+| Windows Runtime | PARCIAL | UI Automation selectors, eventos nativos WinEvent, clipboard/power/idle/process publishers. |
+| Workflows | PARCIAL | Persistencia SQLite, DSL estable, reintentos visuales, rollback basico, monitor de tareas. |
+| OCR/contexto visual | PARCIAL | OCR bajo demanda, crop por ventana/region, mejores providers, proteccion de ventanas sensibles. |
+| RAG/memoria | PARCIAL | Gestor visual minimo implementado; falta borrado/reindexado por documento y fuentes en UI. |
+| Multi-modelo | PENDIENTE | Routing por tarea, embeddings separados, Ollama/vLLM, servidor en red local opcional. |
+| Voz local | PENDIENTE | Whisper.cpp, Piper TTS, wake word y UX manos libres. |
+| Optimizacion | PENDIENTE | Latencia, tokens, retrieval, OCR, eventos y empaquetado. |
+| Personalizacion | PENDIENTE | Datasets, LoRA, perfiles por tarea y especializacion local. |
+
+## Proximas Tareas Recomendadas
+
+1. Probar `/api/system/lmstudio` con LM Studio real y ajustar el ID de modelo.
+2. Probar selector manual de ventanas con VS Code, navegador, Explorer y apps minimizadas.
+3. Refinar OCR overlay con ventanas minimizadas, DPI alto y multi-monitor.
+4. Hacer que el shortcut configurado en settings se aplique en Rust al reiniciar.
+5. Persistir bounds del overlay en backend o storage Tauri, no solo `localStorage`.
+6. Anadir test frontend de `OverlayView`.
+7. Anadir borrado/reindexado por documento en gestor RAG.
+8. Mostrar fuentes RAG usadas en respuestas.
+9. Endurecer confirmaciones overlay para acciones de alto riesgo.
+10. Implementar UI Automation selectors.
+
+## Build Windows
 
 ```powershell
 .\scripts\build-windows-app.ps1
 ```
 
-Cada build completo incrementa automaticamente la version `patch` definida en `VERSION` y sincronizada con Tauri, npm y Cargo. Para elegir otro salto:
-
-```powershell
-.\scripts\build-windows-app.ps1 -VersionPart minor
-.\scripts\build-windows-app.ps1 -VersionPart major
-```
-
-Resultado esperado:
+Salidas esperadas:
 
 ```text
 ui\desktop\src-tauri\target\release\bundle\nsis\IA Local Agent Setup.exe
-```
-
-O:
-
-```text
 ui\desktop\src-tauri\target\release\bundle\msi\IA Local Agent.msi
 ```
 
-En modo empaquetado, Tauri arranca automaticamente el backend FastAPI como sidecar en `127.0.0.1:8765`, verifica `/api/health`, reutiliza un backend sano si ya existe y cierra el proceso creado por Tauri al salir.
+Mas detalles:
 
-Detalles completos: [docs/DESKTOP_APP_MVP.md](docs/DESKTOP_APP_MVP.md).
-
-Guia de build Windows: [docs/WINDOWS_APP_BUILD.md](docs/WINDOWS_APP_BUILD.md).
-
-## Uso Basico
-
-Puedes chatear normalmente:
-
-```text
-Tu: resume que puedes hacer
-```
-
-El modelo puede pedir ejecutar una tool. Antes de hacerlo, el agente pedira confirmacion:
-
-```text
-El modelo quiere ejecutar 'get_system_info' con argumentos:
-{}
-Confirmar? (s/n):
-```
-
-Solo se ejecuta si respondes `s`, `si`, `y` o `yes`.
-
-## Memoria
-
-La memoria local usa:
-
-- SQLite para historial conversacional: `data/conversations.sqlite3`
-- ChromaDB para memoria semantica: `data/chroma/`
-- Cache local del modelo de embeddings: `data/hf_cache/`
-
-Estos datos estan ignorados por Git porque pueden contener informacion privada.
-
-En modo app Windows empaquetada, los datos modificables se redirigen a:
-
-```text
-C:\Users\<usuario>\AppData\Local\IA Local Agent\
-```
-
-para evitar escritura dentro de `Program Files`.
-
-Comandos:
-
-```text
-/remember El usuario prefiere respuestas breves en espanol.
-/memories
-/memory_search preferencias del usuario
-/memory_stats
-/memory_rebuild
-/forget id_de_memoria
-```
-
-Flujo de memoria:
-
-```text
-Usuario pregunta algo
--> Se busca memoria relevante en ChromaDB
--> Se carga historial reciente desde SQLite
--> Todo se inyecta en el prompt
--> LM Studio responde con mas contexto
-```
-
-Embeddings:
-
-- Por defecto usa LM Studio con `text-embedding-nomic-embed-text-v1.5`.
-- Si prefieres `sentence-transformers`, configura `SEMANTIC_EMBEDDING_PROVIDER=sentence-transformers`.
-- Al cambiar de embedding, ejecuta `/memory_rebuild` para reindexar el historial guardado.
-
-## RAG Local
-
-El RAG documental usa ChromaDB persistente, manifest incremental en `data/rag_manifest.json` y `.ragignore` para excluir secretos, entornos virtuales, caches y datos privados. Por defecto genera embeddings contra LM Studio usando el modelo `text-embedding-nomic-embed-text-v1.5`.
-
-Comandos:
-
-```text
-/rag_index README.md --project selftest
-/rag_index docs --project local-agent
-/rag_search como ejecuto el agente
-/rag_stats
-```
-
-La tool `search_local_knowledge` queda disponible para el modelo cuando la pregunta dependa de documentacion local indexada. Devuelve contexto con fuentes, distancias y metadata.
-
-Tipos soportados:
-
-| Tipo | Estrategia |
-| --- | --- |
-| Markdown | Chunking por jerarquia de headings |
-| TXT/log | Chunking por parrafos con overlap |
-| JSON | Pretty-print estructurado antes de chunking |
-| CSV | Filas convertidas a texto con columnas |
-| Codigo | Chunking por simbolos Python cuando aplica, fallback por texto |
-| PDF | Extraccion por paginas con `pypdf` |
-
-## Tools
-
-Las tools estan registradas mediante `ToolRegistry` y se exponen al modelo con schemas OpenAI-compatible. Tambien pueden ejecutarse manualmente desde consola:
-
-```text
-/tool notepad
-/tool calc
-/tool sistema
-/tool get_running_processes {"limit": 10}
-/tool search_files {"path": ".", "pattern": "*.md", "limit": 5}
-/tool run_powershell {"command": "Get-Date"}
-/tool list_directory {"path": ".", "limit": 20}
-/tool read_text_file {"path": "README.md", "max_chars": 2000}
-/tool get_clipboard
-/tool set_clipboard {"text": "hola desde el agente"}
-/tool open_url {"url": "https://example.com"}
-/tool search_local_knowledge {"query": "como se ejecuta el agente", "project_id": "selftest", "top_k": 3}
-```
-
-Tools disponibles:
-
-| Tool | Uso |
-| --- | --- |
-| `open_notepad` | Abre el Bloc de notas |
-| `open_calculator` | Abre la calculadora |
-| `open_application` | Abre apps permitidas por allowlist |
-| `get_system_info` | Muestra informacion basica del sistema |
-| `get_running_processes` | Lista procesos activos |
-| `search_files` | Busca archivos por patron |
-| `list_directory` | Lista archivos y carpetas |
-| `read_text_file` | Lee archivos de texto UTF-8 |
-| `get_clipboard` | Lee el portapapeles |
-| `set_clipboard` | Escribe en el portapapeles |
-| `get_mouse_position` | Devuelve posicion del raton |
-| `get_screen_size` | Devuelve tamano de pantalla |
-| `move_mouse` | Mueve el raton |
-| `click_mouse` | Hace click |
-| `press_key` | Pulsa una tecla |
-| `hotkey` | Pulsa combinaciones de teclas |
-| `type_text` | Escribe texto |
-| `open_url` | Abre una URL |
-| `run_powershell` | Ejecuta comandos PowerShell permitidos |
-| `search_local_knowledge` | Busca contexto en la documentacion local indexada |
-
-Apps permitidas en `open_application`:
-
-```text
-notepad
-calculator
-explorer
-paint
-cmd
-powershell
-```
-
-Comandos permitidos en `run_powershell`:
-
-```text
-Get-Date
-Get-Process
-Get-Service
-Get-ComputerInfo
-Get-ChildItem
-Test-Path
-Where-Object
-Select-Object
-Sort-Object
-Measure-Object
-Format-Table
-Format-List
-```
-
-Por seguridad se bloquean tokens de composicion o redireccion como `;`, `&&`, `||`, `$(`, backticks, `>`, `>>` y `<`.
-
-Limites principales:
-
-| Recurso | Limite |
-| --- | --- |
-| PowerShell timeout | 15 segundos |
-| PowerShell command | 300 caracteres |
-| `get_running_processes` | 50 procesos |
-| `search_files` | 100 resultados |
-| `list_directory` | 100 elementos |
-| `read_text_file` | 12000 caracteres |
-| Clipboard | 8000 caracteres |
-| `type_text` | 500 caracteres |
-| `click_mouse` | 3 clicks |
-
-## Configuracion
-
-Variables `.env` soportadas:
-
-```text
-APP_ENV=dev
-DEFAULT_PROVIDER=lmstudio
-DEFAULT_MODEL=qwen/qwen3.5-9b
-LMSTUDIO_BASE_URL=http://127.0.0.1:1234/v1
-LMSTUDIO_API_KEY=lm-studio
-LLM_TEMPERATURE=0.7
-MAX_CONTEXT_TOKENS=4096
-RESERVED_RESPONSE_TOKENS=1024
-TOOLS_REQUIRE_CONFIRMATION=true
-TOOL_ALLOWED_ROOTS=D:\local-ai-agent\project
-TOOL_CONFIRM_READ_ROOTS=D:\;C:\Users\Sergio Villa\Documents;C:\Users\Sergio Villa\Desktop;C:\Users\Sergio Villa\Downloads;C:\Users\Sergio Villa\Pictures;C:\Users\Sergio Villa\Videos
-CONVERSATIONS_PATH=data/conversations.sqlite3
-CHROMA_PATH=data/chroma
-SEMANTIC_MEMORY_ENABLED=true
-SEMANTIC_MEMORY_RESULTS=5
-SEMANTIC_EMBEDDING_PROVIDER=lmstudio
-SEMANTIC_EMBEDDING_MODEL=text-embedding-nomic-embed-text-v1.5
-LONG_TERM_MEMORY_ENABLED=true
-RAG_DOCUMENTS_ROOT=..
-RAG_MANIFEST_PATH=data/rag_manifest.json
-RAG_EMBEDDING_PROVIDER=lmstudio
-RAG_EMBEDDING_MODEL=text-embedding-nomic-embed-text-v1.5
-RAG_CHUNK_TOKENS=750
-RAG_CHUNK_OVERLAP_TOKENS=120
-RAG_TOP_K=8
-LOG_LEVEL=INFO
-```
-
-## Arquitectura
-
-```text
-CLI / futura UI
-    -> LocalAgent
-        -> ContextBuilder
-        -> PromptManager
-        -> ConversationManager
-        -> SemanticMemoryManager
-        -> LocalRagService / ChromaRagStore
-        -> ProviderRegistry / LLMProvider
-        -> ToolRegistry / ToolExecutor
-```
-
-Modulos principales:
-
-- `config.py`: configuracion desde `.env` y variables de entorno.
-- `providers.py`: interfaz `LLMProvider`, `LMStudioProvider` y registro de providers.
-- `prompts.py`: renderizado del system prompt.
-- `conversations.py`: mensajes, conversaciones y persistencia SQLite.
-- `context.py`: recorte de contexto e inyeccion de memoria.
-- `semantic_memory.py`: memoria semantica sobre ChromaDB.
-- `rag/`: RAG documental local con loaders, manifest incremental, chunking, ChromaDB y retrieval.
-- `tooling/`: registry, permisos, auditoria y ejecucion de tools.
-- `tools_catalog/`: definiciones de tools locales por dominio.
-- `orchestration/`: esqueleto para workflows agenticos.
-- `agent.py`: orquestador del turno conversacional.
-- `cli.py`: entrada de consola.
-
-## Roadmap
-
-1. Mejorar seguridad y permisos de tools. En progreso: registry, permisos y auditoria ya separados.
-2. Crear memoria persistente. Hecho: SQLite para conversaciones y ChromaDB para memoria.
-3. Mejorar memoria con busqueda semantica. Hecho base: embeddings locales por LM Studio, busqueda y reindexado.
-4. Anadir RAG local sobre documentos. Hecho base: ingestion, chunking, ChromaDB, CLI y tool.
-5. Integrar embeddings locales. Hecho base con LM Studio y fallback opcional a `sentence-transformers`.
-6. Automatizacion Windows avanzada.
-7. UI propia.
-8. Voz local con STT y TTS.
-
-## Filosofia
-
-Este proyecto no busca ser solo un chat local. La meta es construir un Jarvis/Copilot privado para Windows, capaz de ayudar en desarrollo, controlar herramientas reales, recordar contexto y funcionar de forma local.
+- [docs/DESKTOP_APP_MVP.md](docs/DESKTOP_APP_MVP.md)
+- [docs/WINDOWS_APP_BUILD.md](docs/WINDOWS_APP_BUILD.md)
+- [docs/api.md](docs/api.md)
+- [docs/WINDOWS_OS_AGENT_ARCHITECTURE.md](docs/WINDOWS_OS_AGENT_ARCHITECTURE.md)

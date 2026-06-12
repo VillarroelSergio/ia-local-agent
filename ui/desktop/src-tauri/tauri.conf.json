@@ -12,6 +12,7 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "IA Local Agent",
         "width": 1320,
         "height": 860,

@@ -9,9 +9,11 @@ from uuid import uuid4
 from src.agent import LocalAgent
 from src.conversations import Message
 from src.providers import LLMRequest
+from src.simple_actions import SimpleAction, detect_simple_action
 from src.api.schemas.chat import AgentMetadata, ChatMessage, ChatRequest, ChatResponse, StreamingChunk, ToolCallEvent
 from src.api.schemas.events import EventEnvelope
 from src.api.services.event_service import EventBus
+from src.tooling import ToolCall, ToolContext
 
 
 class AgentService:
@@ -28,10 +30,13 @@ class AgentService:
 
     async def chat(self, request: ChatRequest) -> ChatResponse:
         final = None
+        error_payload = None
         tool_events: list[ToolCallEvent] = []
         async for chunk in self.stream_chat(request):
             if chunk.type == "message.completed":
                 final = chunk.data
+            if chunk.type == "error":
+                error_payload = chunk.data
             if chunk.type.startswith("tool."):
                 name = chunk.data.get("name")
                 if name:
@@ -43,7 +48,8 @@ class AgentService:
                         status=chunk.type.removeprefix("tool."),
                     ))
         if final is None:
-            raise RuntimeError("La respuesta del agente no se completo.")
+            details = (error_payload or {}).get("details") or (error_payload or {}).get("message")
+            raise RuntimeError(details or "La respuesta del agente no se completo.")
         return ChatResponse(
             conversation_id=final["conversation_id"],
             message=ChatMessage(**final["message"]),
@@ -63,9 +69,10 @@ class AgentService:
         async with self._lock:
             conversation = self._select_conversation(request.conversation_id)
             history_length = self.agent.conversations.current_length()
+            user_content = self._message_with_context(request.message, request.context)
             self.agent.conversations.append(Message(
                 role="user",
-                content=request.message,
+                content=user_content,
                 metadata={"context": request.context, "request_id": request_id},
             ))
             await self._publish("message.started", request_id, request.correlation_id, {
@@ -74,6 +81,41 @@ class AgentService:
             yield self._chunk("message.started", request_id, request.correlation_id, data={"conversation_id": conversation.id})
 
             try:
+                simple_action = detect_simple_action(request.message) if request.use_tools else None
+                if simple_action:
+                    async for chunk in self._execute_simple_action(
+                        simple_action,
+                        conversation.id,
+                        request_id,
+                        request.correlation_id,
+                    ):
+                        if chunk.type == "message.delta" and chunk.delta:
+                            text += chunk.delta
+                            final_text += chunk.delta
+                        if chunk.type == "tool.completed":
+                            tools_executed.append(chunk.data.get("name", ""))
+                        yield chunk
+
+                    self.agent.index_new_conversation_messages(history_length)
+                    message = self.agent.conversations.get_messages()[-1]
+                    metadata = AgentMetadata(
+                        provider=request.provider or self.agent.provider.name,
+                        model=request.model or self.agent.settings.default_model,
+                        duration_ms=int((monotonic() - started_at) * 1000),
+                        approximate_tokens=max(1, len((text or "").split())),
+                        tools_executed=tools_executed,
+                        request_id=request_id,
+                        correlation_id=request.correlation_id,
+                    )
+                    payload = {
+                        "conversation_id": conversation.id,
+                        "message": self._message_to_dict(message),
+                        "metadata": metadata.model_dump(),
+                    }
+                    await self._publish("message.completed", request_id, request.correlation_id, payload)
+                    yield self._chunk("message.completed", request_id, request.correlation_id, data=payload)
+                    return
+
                 async for chunk in self._provider_stream(request, request_id):
                     if request_id in self._cancelled:
                         raise asyncio.CancelledError()
@@ -138,7 +180,12 @@ class AgentService:
             except Exception as error:
                 removed_ids = self.agent.conversations.remove_messages_after(history_length)
                 self.agent.semantic_memory.delete_conversation_messages(removed_ids)
-                payload = {"message": "Error al generar respuesta.", "details": str(error)}
+                payload = {
+                    "message": "Error al generar respuesta.",
+                    "details": str(error),
+                    "provider": self.agent.provider.name,
+                    "model": request.model or self.agent.settings.default_model,
+                }
                 await self._publish("error", request_id, request.correlation_id, payload)
                 yield self._chunk("error", request_id, request.correlation_id, data=payload)
 
@@ -191,8 +238,6 @@ class AgentService:
             yield self._chunk("tool.requested", request_id, request.correlation_id, data=payload)
 
     async def _execute_tool_calls(self, tool_calls, conversation_id, request_id, correlation_id):
-        from src.tooling import ToolCall, ToolContext
-
         for call in tool_calls:
             name = call["function"]["name"]
             args = self._parse_arguments(call)
@@ -214,6 +259,52 @@ class AgentService:
             data = result.model_dump(mode="json")
             data.update({"id": call["id"], "name": name})
             yield self._chunk(event_type, request_id, correlation_id, data=data)
+
+    async def _execute_simple_action(self, action: SimpleAction, conversation_id: str, request_id: str, correlation_id: str | None):
+        call = ToolCall(name=action.tool_name, arguments=action.arguments, conversation_id=conversation_id)
+        requested_data = {
+            "id": call.id,
+            "name": action.tool_name,
+            "arguments": action.arguments,
+            "tool_call": {
+                "id": call.id,
+                "type": "function",
+                "function": {
+                    "name": action.tool_name,
+                    "arguments": json.dumps(action.arguments, ensure_ascii=False),
+                },
+            },
+        }
+        yield self._chunk("tool.requested", request_id, correlation_id, data=requested_data)
+        yield self._chunk("tool.started", request_id, correlation_id, data={
+            "id": call.id,
+            "name": action.tool_name,
+            "arguments": action.arguments,
+        })
+        result = await self.agent.tool_executor.execute(
+            call,
+            ToolContext(conversation_id=conversation_id, settings=self.agent.settings),
+            require_preapproved=True,
+        )
+        self.agent.conversations.append(Message(
+            role="tool",
+            content=json.dumps(result.to_message_content(), ensure_ascii=False),
+            tool_call_id=call.id,
+            name=action.tool_name,
+        ))
+        data = result.model_dump(mode="json")
+        data.update({"id": call.id, "name": action.tool_name})
+        yield self._chunk("tool.completed" if result.ok else "tool.failed", request_id, correlation_id, data=data)
+
+        message = self._format_simple_action_response(action, result.to_message_content())
+        self.agent.conversations.append(Message(role="assistant", content=message))
+        yield self._chunk("message.delta", request_id, correlation_id, delta=message)
+
+    @staticmethod
+    def _format_simple_action_response(action: SimpleAction, result: Any):
+        if isinstance(result, dict) and result.get("error"):
+            return f"No he podido hacerlo: {result['error']}"
+        return action.user_message
 
     async def _final_response_after_tools(self, request: ChatRequest, request_id: str, conversation_id: str, tool_results: list[dict[str, Any]]):
         system_prompt = self.agent.prompt_manager.render_system_prompt(
@@ -285,3 +376,12 @@ class AgentService:
 
     async def _publish(self, type_: str, request_id: str, correlation_id: str | None, data: dict[str, Any]):
         await self.event_bus.publish(EventEnvelope(type=type_, data=data, request_id=request_id, correlation_id=correlation_id))
+
+    @staticmethod
+    def _message_with_context(message: str, context: dict[str, Any] | None) -> str:
+        if not context:
+            return message
+        context_text = json.dumps(context, ensure_ascii=False, indent=2)
+        if len(context_text) > 2500:
+            context_text = f"{context_text[:2500]}\n... contexto truncado ..."
+        return f"{message}\n\n[Contexto local seguro]\n{context_text}"

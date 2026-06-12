@@ -22,6 +22,7 @@ try:
     from providers import LLMRequest, ProviderError, build_provider_registry
     from rag import LocalRagService
     from semantic_memory import SemanticMemoryManager
+    from simple_actions import detect_simple_action
     from tooling import PermissionMode, ToolContext
     from tools import TOOL_REGISTRY, TOOL_SCHEMAS, build_tool_executor
 except ModuleNotFoundError:
@@ -32,6 +33,7 @@ except ModuleNotFoundError:
     from src.providers import LLMRequest, ProviderError, build_provider_registry
     from src.rag import LocalRagService
     from src.semantic_memory import SemanticMemoryManager
+    from src.simple_actions import detect_simple_action
     from src.tooling import PermissionMode, ToolContext
     from src.tools import TOOL_REGISTRY, TOOL_SCHEMAS, build_tool_executor
 
@@ -343,7 +345,7 @@ class LocalAgent:
             },
             "system": {"get_system_info", "get_running_processes", "run_powershell"},
             "files": {"list_directory", "read_text_file", "search_files", "search_local_knowledge"},
-            "apps": {"open_application", "open_notepad", "open_calculator", "list_installed_applications"},
+            "apps": {"open_application", "open_notepad", "open_calculator", "list_installed_applications", "open_url"},
             "clipboard": {"get_clipboard", "set_clipboard"},
         }
         intent_keywords = [
@@ -352,7 +354,7 @@ class LocalAgent:
             (groups["vision"], ("pantalla", "captura", "screenshot", "ocr", "visible", "resume la ventana", "lee el texto", "imagen")),
             (groups["system"], ("sistema", "cpu", "ram", "memoria ram", "uso de memoria", "procesos", "powershell", "servicios")),
             (groups["files"], ("archivo", "archivos", "carpeta", "directorio", "disco", "unidad", ".pdf", "pdf", "readme", "docs", "documentacion", "busca en", "buscar en", "encuentra", "localiza")),
-            (groups["apps"], ("abre", "abrir", "aplicaciones instaladas", "apps instaladas", "programas instalados", "que aplicaciones hay instaladas", "que apps hay instaladas", "notepad", "calculadora", "explorer")),
+            (groups["apps"], ("abre", "abrir", "open ", "launch ", "inicia", "iniciar", "busca", "buscar", "google", "youtube", "gmail", "spotify", "aplicaciones instaladas", "apps instaladas", "programas instalados", "que aplicaciones hay instaladas", "que apps hay instaladas", "notepad", "calculadora", "explorer")),
             (groups["clipboard"], ("portapapeles", "clipboard", "copiar", "pegar")),
         ]
 
@@ -711,6 +713,25 @@ class LocalAgent:
         original_user_input = self.context_builder.get_last_user_input(
             self.conversations.get_messages()
         )
+        simple_action = detect_simple_action(original_user_input)
+
+        if simple_action:
+            result = self.tool_executor.execute_sync(
+                simple_action.tool_name,
+                simple_action.arguments,
+                ToolContext(settings=self.settings),
+                require_preapproved=True,
+            )
+            self.conversations.append(Message(
+                role="tool",
+                content=json.dumps(result, ensure_ascii=False),
+                name=simple_action.tool_name,
+            ))
+            content = self._format_simple_action_response(simple_action, result)
+            print(f"\nIA: {content}")
+            self.conversations.append(Message(role="assistant", content=content))
+            return
+
         assistant_message, tool_calls = self.stream_response(use_tools=True)
 
         if not tool_calls:
@@ -752,6 +773,15 @@ class LocalAgent:
             role="assistant",
             content=final_message,
         ))
+
+    @staticmethod
+    def _format_simple_action_response(simple_action, result):
+        if isinstance(result, dict) and result.get("ok") is False:
+            error = result.get("error") or "No se pudo completar la accion."
+            return f"No he podido hacerlo: {error}"
+        if isinstance(result, dict) and result.get("error"):
+            return f"No he podido hacerlo: {result['error']}"
+        return simple_action.user_message
 
     def submit_user_message(self, content):
         """Anade un mensaje del usuario y ejecuta un turno del agente."""

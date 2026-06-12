@@ -13,6 +13,9 @@ const fields = [
   "CHROMA_PATH",
   "RAG_DOCUMENTS_ROOT",
   "RAG_TOP_K",
+  "OVERLAY_ENABLED",
+  "OVERLAY_SHORTCUT",
+  "OVERLAY_ALWAYS_ON_TOP",
 ];
 
 /** Renderiza el modal de settings y sincroniza valores editables con el backend. */
@@ -21,6 +24,8 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
   const [values, setValues] = useState<Record<string, string | number | boolean>>({});
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [diagnostics, setDiagnostics] = useState<string | null>(null);
+  const [models, setModels] = useState<string[]>([]);
 
   useEffect(() => {
     if (!open) return;
@@ -55,6 +60,22 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
       <form className="modal settings-modal" onSubmit={submit}>
         <h2>Settings</h2>
         {error && <div className="error-box">{error}</div>}
+        {diagnostics && <div className="result-card">{diagnostics}</div>}
+        {models.length > 0 && (
+          <label>
+            Modelo detectado
+            <select
+              value={String(values.DEFAULT_MODEL ?? "")}
+              onChange={(event) => setValues((current) => ({ ...current, DEFAULT_MODEL: event.target.value }))}
+            >
+              {models.map((model) => (
+                <option key={model} value={model}>
+                  {model}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         {fields.map((field) => {
           const value = values[field];
           const isBoolean = typeof value === "boolean";
@@ -80,6 +101,27 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
         <small>{settings?.metadata?.requires_restart ? "Los cambios aplican al reiniciar el backend." : ""}</small>
         {saved && <span className="success-copy">Guardado</span>}
         <div className="modal-actions">
+          <button
+            type="button"
+            className="secondary-action"
+            onClick={() =>
+              apiClient
+                .lmStudioDiagnostics()
+                .then((result) =>
+                  {
+                    setModels(result.models ?? []);
+                    setDiagnostics(
+                      result.ok
+                        ? `LM Studio OK. Modelo configurado ${result.model_found ? "encontrado" : "NO encontrado"}. Modelos: ${result.models.join(", ")}`
+                        : `LM Studio fallo: ${result.error}`,
+                    );
+                  },
+                )
+                .catch((err) => setDiagnostics(err instanceof Error ? err.message : String(err)))
+            }
+          >
+            Probar LM Studio
+          </button>
           <button type="button" className="secondary-action" onClick={onClose}>
             Cerrar
           </button>

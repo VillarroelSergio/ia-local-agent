@@ -99,6 +99,28 @@ export interface ActiveWindowResponse {
   } | null;
 }
 
+export interface WindowInfo {
+  handle?: number | null;
+  title?: string | null;
+  process_name?: string | null;
+  pid?: number | null;
+  state?: string | null;
+  monitor_index?: number | null;
+  sensitive?: boolean;
+  rect?: Record<string, number> | null;
+}
+
+export interface LmStudioDiagnostics {
+  ok: boolean;
+  base_url: string;
+  configured_model: string;
+  models_url: string;
+  models: string[];
+  model_found: boolean;
+  error?: string | null;
+  last_provider_metrics?: Record<string, unknown> | null;
+}
+
 export interface SettingsResponse {
   values: Record<string, string | number | boolean>;
   metadata: Record<string, unknown>;

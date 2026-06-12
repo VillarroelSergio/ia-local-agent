@@ -7,18 +7,24 @@ interface Props {
   messages: ChatMessage[];
   busy: boolean;
   activeConversationId?: string;
-  onSend: (message: string) => void;
+  autoFocusKey?: number;
+  onSend: (message: string, context?: Record<string, unknown>) => void;
   onCancel: () => void;
 }
 
 /** Renderiza el area de mensajes y el composer para enviar o cancelar respuestas del chat. */
-export function ChatView({ messages, busy, activeConversationId, onSend, onCancel }: Props) {
+export function ChatView({ messages, busy, activeConversationId, autoFocusKey, onSend, onCancel }: Props) {
   const [draft, setDraft] = useState("");
   const scroller = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, [autoFocusKey]);
 
   /** Valida el borrador, limpia el textarea y delega el envio al contenedor principal. */
   function submit(event: FormEvent) {
@@ -43,6 +49,7 @@ export function ChatView({ messages, busy, activeConversationId, onSend, onCance
       </div>
       <form className="composer" onSubmit={submit}>
         <textarea
+          ref={inputRef}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           placeholder="Mensaje para el agente local"

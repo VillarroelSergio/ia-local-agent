@@ -30,3 +30,26 @@ class MemoryService:
         if self.agent is None:
             return self.stats()
         return self.agent.rebuild_semantic_memory()
+
+    def rag_stats(self):
+        if self.agent is None or not hasattr(self.agent, "rag"):
+            return {"available": False}
+        data = self.agent.rag.stats()
+        data["available"] = True
+        return data
+
+    def rag_index(self, path, project_id="default", force=False):
+        if self.agent is None or not hasattr(self.agent, "rag"):
+            return {"available": False, "error": "RAG no disponible."}
+        return self.agent.rag.index_path(path, project_id=project_id, force=force)
+
+    def rag_documents(self):
+        if self.agent is None or not hasattr(self.agent, "rag"):
+            return {"available": False, "documents": []}
+        documents = []
+        for source_path, payload in self.agent.rag.manifest.items.items():
+            item = dict(payload)
+            item["source_path"] = source_path
+            documents.append(item)
+        documents.sort(key=lambda item: item.get("indexed_at", ""), reverse=True)
+        return {"available": True, "count": len(documents), "documents": documents}

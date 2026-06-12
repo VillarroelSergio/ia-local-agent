@@ -138,11 +138,19 @@ export default function App() {
       setRequestId(null);
       refreshConversations(activeIdRef.current);
     }
-    if (chunk.type === "error") setBusy(false);
+    if (chunk.type === "error") {
+      const message = String(chunk.data?.details ?? chunk.data?.message ?? "Error al generar respuesta.");
+      setMessages((current) => [
+        ...current.filter((msg) => !msg.metadata?.streaming),
+        { role: "assistant", content: message, metadata: { error: true } },
+      ]);
+      setBusy(false);
+      setRequestId(null);
+    }
   }
 
   /** Envia un mensaje usando WebSocket cuando es posible y cae a streaming HTTP o POST normal como respaldo. */
-  async function sendMessage(text: string) {
+  async function sendMessage(text: string, context?: Record<string, unknown>) {
     const conversation = activeId ? { id: activeId } : await apiClient.createConversation("Nueva conversacion");
     if (!activeId) {
       setActiveId(conversation.id);
@@ -150,24 +158,38 @@ export default function App() {
     }
     setMessages((current) => [...current, { role: "user", content: text }, { role: "assistant", content: "", metadata: { streaming: true } }]);
     setBusy(true);
+    let sent = false;
     try {
-      const socket = new ChatSocket();
-      chatSocket.current = socket;
-      socket.connect(handleChunk, () => {
-        if (busy) pushEvent({ type: "chat.websocket.closed", timestamp: new Date().toISOString() });
-      });
-      await socket.waitOpen();
-      socket.send({ type: "message", message: text, conversation_id: conversation.id });
-    } catch {
-      const controller = new AbortController();
-      abortRef.current = controller;
       try {
-        await apiClient.streamChat(text, conversation.id, (chunk) => handleChunk(chunk as unknown as StreamingChunk), controller.signal);
+        const socket = new ChatSocket();
+        chatSocket.current = socket;
+        socket.connect(handleChunk, () => {
+          if (busy) pushEvent({ type: "chat.websocket.closed", timestamp: new Date().toISOString() });
+        });
+        await socket.waitOpen();
+        socket.send({ type: "message", message: text, conversation_id: conversation.id, context });
+        sent = true;
       } catch {
-        const response = await apiClient.sendChat(text, conversation.id);
-        setMessages((current) => [...current.filter((msg) => !msg.metadata?.streaming), response.message]);
-        pushEvent({ type: "message.completed", data: response as unknown as Record<string, unknown>, timestamp: new Date().toISOString() });
-      } finally {
+        const controller = new AbortController();
+        abortRef.current = controller;
+        try {
+          await apiClient.streamChat(text, conversation.id, (chunk) => handleChunk(chunk as unknown as StreamingChunk), controller.signal, context);
+          sent = true;
+        } catch (error) {
+          if (error instanceof Error && error.name === "AbortError") throw error;
+          const response = await apiClient.sendChat(text, conversation.id, undefined, context);
+          setMessages((current) => [...current.filter((msg) => !msg.metadata?.streaming), response.message]);
+          pushEvent({ type: "message.completed", data: response as unknown as Record<string, unknown>, timestamp: new Date().toISOString() });
+          sent = true;
+        }
+      }
+    } catch (error) {
+      setMessages((current) => [
+        ...current.filter((msg) => !msg.metadata?.streaming),
+        { role: "assistant", content: error instanceof Error ? error.message : String(error), metadata: { error: true } },
+      ]);
+    } finally {
+      if (!sent) {
         setBusy(false);
         setRequestId(null);
       }

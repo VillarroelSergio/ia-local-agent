@@ -63,6 +63,159 @@ def test_chat_basic_mocked(monkeypatch, tmp_path):
     assert body["conversation_id"]
 
 
+def test_chat_opens_google_without_llm_tool_guessing(monkeypatch, tmp_path):
+    client = build_client(monkeypatch, tmp_path)
+
+    from src.api import dependencies
+    from src.tools_catalog import local
+
+    opened = []
+    monkeypatch.setattr(local.webbrowser, "open", lambda url: opened.append(url) or True)
+
+    response = client.post("/api/chat", headers=headers(), json={"message": "abre google", "use_tools": True})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert opened == ["https://www.google.com"]
+    assert body["message"]["content"] == "Abriendo google."
+    assert body["metadata"]["tools_executed"] == ["open_url"]
+    assert dependencies.local_agent().provider.requests == []
+
+
+def test_chat_opens_spotify_as_direct_action(monkeypatch, tmp_path):
+    client = build_client(monkeypatch, tmp_path)
+
+    from src.api import dependencies
+    from src.os_integration.apps import InstalledApplication, LaunchResult
+    from src.tools_catalog import local
+
+    launched = []
+
+    def fake_launch(query):
+        launched.append(query)
+        return LaunchResult(
+            True,
+            query,
+            InstalledApplication("spotify", "spotify:", "builtin", "url"),
+        )
+
+    monkeypatch.setattr(local.APP_MANAGER, "launch", fake_launch)
+
+    response = client.post("/api/chat", headers=headers(), json={"message": "abre spotify", "use_tools": True})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert launched == ["spotify"]
+    assert body["message"]["content"] == "Abriendo spotify."
+    assert body["metadata"]["tools_executed"] == ["open_application"]
+    assert dependencies.local_agent().provider.requests == []
+
+
+def test_chat_searches_youtube_without_llm(monkeypatch, tmp_path):
+    client = build_client(monkeypatch, tmp_path)
+
+    from src.api import dependencies
+    from src.tools_catalog import local
+
+    opened = []
+    monkeypatch.setattr(local.webbrowser, "open", lambda url: opened.append(url) or True)
+
+    response = client.post(
+        "/api/chat",
+        headers=headers(),
+        json={"message": "busca daft punk en youtube", "use_tools": True},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert opened == ["https://www.youtube.com/results?search_query=daft+punk"]
+    assert body["message"]["content"] == "Buscando daft punk en YouTube."
+    assert body["metadata"]["tools_executed"] == ["open_url"]
+    assert dependencies.local_agent().provider.requests == []
+
+
+def test_chat_searches_spotify_without_llm(monkeypatch, tmp_path):
+    client = build_client(monkeypatch, tmp_path)
+
+    from src.tools_catalog import local
+
+    opened = []
+    monkeypatch.setattr(local.webbrowser, "open", lambda url: opened.append(url) or True)
+
+    response = client.post(
+        "/api/chat",
+        headers=headers(),
+        json={"message": "buscar nina simone en spotify", "use_tools": True},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert opened == ["https://open.spotify.com/search/nina%20simone"]
+    assert body["message"]["content"] == "Buscando nina simone en Spotify."
+    assert body["metadata"]["tools_executed"] == ["open_url"]
+
+
+def test_chat_volume_and_media_commands_use_keys(monkeypatch, tmp_path):
+    client = build_client(monkeypatch, tmp_path)
+
+    from src.tools_catalog import local
+
+    pressed = []
+
+    class FakePyAutoGui:
+        FAILSAFE = True
+
+        @staticmethod
+        def press(key):
+            pressed.append(key)
+
+    monkeypatch.setattr(local, "pyautogui", FakePyAutoGui)
+
+    volume = client.post("/api/chat", headers=headers(), json={"message": "sube el volumen", "use_tools": True})
+    media = client.post("/api/chat", headers=headers(), json={"message": "siguiente", "use_tools": True})
+
+    assert volume.status_code == 200
+    assert media.status_code == 200
+    assert pressed == ["volumeup", "nexttrack"]
+    assert volume.json()["metadata"]["tools_executed"] == ["press_key"]
+    assert media.json()["metadata"]["tools_executed"] == ["press_key"]
+
+
+def test_chat_window_command_uses_semantic_window_tool(monkeypatch, tmp_path):
+    client = build_client(monkeypatch, tmp_path)
+
+    from src.os_integration.models import Rect, WindowInfo, WindowState
+    from src.tools_catalog import windows_os
+
+    calls = []
+
+    class FakeWindowManager:
+        def maximize_window(self, handle=None, query=None):
+            calls.append((handle, query))
+            return WindowInfo(
+                handle=99,
+                title="Spotify",
+                process_name="Spotify.exe",
+                pid=123,
+                rect=Rect(0, 0, 800, 600),
+                monitor_index=0,
+                state=WindowState.MAXIMIZED,
+            )
+
+    class FakeRuntime:
+        window_manager = FakeWindowManager()
+
+    monkeypatch.setattr(windows_os, "get_runtime", lambda: FakeRuntime())
+
+    response = client.post("/api/chat", headers=headers(), json={"message": "maximiza spotify", "use_tools": True})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert calls == [(None, "spotify")]
+    assert body["message"]["content"] == "Maximizando spotify."
+    assert body["metadata"]["tools_executed"] == ["maximize_window"]
+
+
 def test_streaming_sse(monkeypatch, tmp_path):
     client = build_client(monkeypatch, tmp_path)
     with client.stream("POST", "/api/chat/stream", headers=headers(), json={"message": "Hola", "use_tools": False}) as response:

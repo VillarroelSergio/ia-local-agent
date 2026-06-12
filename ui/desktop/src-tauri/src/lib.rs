@@ -10,6 +10,7 @@ use serde::Serialize;
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use tauri_plugin_shell::{process::CommandChild, ShellExt};
+use windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
 
 const API_HOST: &str = "127.0.0.1";
 const API_PORT: u16 = 8765;
@@ -34,6 +35,11 @@ enum HealthState {
 struct BackendLifecycleEvent {
     state: String,
     message: String,
+}
+
+#[derive(Clone, Serialize)]
+struct OverlayContextEvent {
+    handle: isize,
 }
 
 fn healthcheck() -> HealthState {
@@ -223,8 +229,33 @@ fn toggle_overlay(app: &tauri::AppHandle) {
             let _ = window.set_focus();
             let _ = window.set_always_on_top(true);
             let _ = window.emit("overlay-opened", ());
+            let app = app.clone();
+            thread::spawn(move || {
+                thread::sleep(Duration::from_millis(60));
+                refresh_overlay_context(app);
+            });
         }
     }
+}
+
+fn refresh_overlay_context(app: tauri::AppHandle) {
+    let Some(window) = app.get_webview_window(OVERLAY_WINDOW_LABEL) else {
+        return;
+    };
+    let _ = window.hide();
+    thread::sleep(Duration::from_millis(180));
+    let foreground = unsafe { GetForegroundWindow() };
+    let _ = window.show();
+    let _ = window.set_focus();
+    let _ = window.set_always_on_top(true);
+    if !foreground.is_null() {
+        let _ = window.emit("overlay-context", OverlayContextEvent { handle: foreground as isize });
+    }
+}
+
+#[tauri::command]
+fn refresh_overlay_context_command(app: tauri::AppHandle) {
+    refresh_overlay_context(app);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -251,6 +282,7 @@ pub fn run() {
             thread::spawn(move || ensure_backend(handle));
             Ok(())
         })
+        .invoke_handler(tauri::generate_handler![refresh_overlay_context_command])
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == OVERLAY_WINDOW_LABEL {

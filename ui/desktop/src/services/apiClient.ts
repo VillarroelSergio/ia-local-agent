@@ -4,9 +4,11 @@ import type {
   ChatResponse,
   Conversation,
   ConversationMessages,
+  LmStudioDiagnostics,
   SettingsResponse,
   ToolExecuteResponse,
   ToolInfo,
+  WindowInfo,
 } from "../types/api";
 
 export const DEFAULT_API_BASE_URL = "http://127.0.0.1:8765";
@@ -70,6 +72,21 @@ export class ApiClient {
     return this.request<ActiveWindowResponse>(`/api/system/active-window${query}`);
   }
 
+  /** Devuelve metadata segura de una ventana por HWND. */
+  windowByHandle(handle: number) {
+    return this.request<ActiveWindowResponse>(`/api/system/window/${handle}`);
+  }
+
+  /** Lista ventanas visibles para seleccion manual en overlay. */
+  listWindows() {
+    return this.request<{ count: number; windows: WindowInfo[] }>("/api/system/windows");
+  }
+
+  /** Diagnostica la conexion local con LM Studio y el modelo configurado. */
+  lmStudioDiagnostics() {
+    return this.request<LmStudioDiagnostics>("/api/system/lmstudio");
+  }
+
   /** Obtiene todas las conversaciones guardadas. */
   listConversations() {
     return this.request<Conversation[]>("/api/conversations");
@@ -102,10 +119,10 @@ export class ApiClient {
   }
 
   /** Envia un mensaje de chat sin streaming y devuelve la respuesta completa del asistente. */
-  sendChat(message: string, conversation_id?: string, correlation_id?: string) {
+  sendChat(message: string, conversation_id?: string, correlation_id?: string, context?: Record<string, unknown>) {
     return this.request<ChatResponse>("/api/chat", {
       method: "POST",
-      body: JSON.stringify({ message, conversation_id, stream: false, use_tools: true, correlation_id }),
+      body: JSON.stringify({ message, conversation_id, stream: false, use_tools: true, correlation_id, context }),
     });
   }
 
@@ -115,11 +132,12 @@ export class ApiClient {
     conversation_id: string | undefined,
     onChunk: (chunk: Record<string, unknown>) => void,
     signal?: AbortSignal,
+    context?: Record<string, unknown>,
   ) {
     const response = await fetch(`${this.baseUrl}/api/chat/stream`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-api-key": this.token },
-      body: JSON.stringify({ message, conversation_id, stream: true, use_tools: true }),
+      body: JSON.stringify({ message, conversation_id, stream: true, use_tools: true, context }),
       signal,
     });
     if (!response.ok || !response.body) throw new Error(await response.text());
@@ -196,6 +214,24 @@ export class ApiClient {
   /** Busca entradas de memoria relacionadas con el texto indicado. */
   searchMemory(query: string) {
     return this.request<unknown[]>(`/api/memory/search?query=${encodeURIComponent(query)}`);
+  }
+
+  /** Obtiene estadisticas del RAG documental. */
+  ragStats() {
+    return this.request<Record<string, unknown>>("/api/memory/rag/stats");
+  }
+
+  /** Lista documentos indexados en el manifest RAG. */
+  ragDocuments() {
+    return this.request<{ available: boolean; count: number; documents: Record<string, unknown>[] }>("/api/memory/rag/documents");
+  }
+
+  /** Indexa una ruta local para RAG documental. */
+  indexRag(path: string, project_id = "default", force = false) {
+    return this.request<Record<string, unknown>>("/api/memory/rag/index", {
+      method: "POST",
+      body: JSON.stringify({ path, project_id, force }),
+    });
   }
 }
 

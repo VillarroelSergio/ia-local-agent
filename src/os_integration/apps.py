@@ -59,6 +59,7 @@ class ApplicationManager:
         "cmd": "cmd.exe",
         "terminal": "wt.exe",
         "powershell": "powershell.exe",
+        "spotify": ("spotify:", "url"),
     }
 
     def __init__(self):
@@ -136,10 +137,14 @@ class ApplicationManager:
         return LaunchResult(True, query, app=app)
 
     def _from_builtins(self) -> list[InstalledApplication]:
-        return [
-            InstalledApplication(name, command, "builtin", "executable")
-            for name, command in self.builtin_commands.items()
-        ]
+        apps = []
+        for name, command in self.builtin_commands.items():
+            if isinstance(command, tuple):
+                launch_path, kind = command
+            else:
+                launch_path, kind = command, "executable"
+            apps.append(InstalledApplication(name, launch_path, "builtin", kind))
+        return apps
 
     def _from_app_paths(self) -> list[InstalledApplication]:
         if winreg is None:

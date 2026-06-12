@@ -18,6 +18,9 @@ SETTING_KEYS = {
     "CHROMA_PATH": "path",
     "RAG_DOCUMENTS_ROOT": "path",
     "RAG_TOP_K": "int",
+    "OVERLAY_ENABLED": "bool",
+    "OVERLAY_SHORTCUT": "str",
+    "OVERLAY_ALWAYS_ON_TOP": "bool",
 }
 
 
@@ -41,6 +44,9 @@ class SettingsService:
             "CHROMA_PATH": str(settings.chroma_path),
             "RAG_DOCUMENTS_ROOT": str(settings.rag_documents_root),
             "RAG_TOP_K": settings.rag_top_k,
+            "OVERLAY_ENABLED": os.getenv("OVERLAY_ENABLED", "true").lower() in {"1", "true", "yes", "si"},
+            "OVERLAY_SHORTCUT": os.getenv("OVERLAY_SHORTCUT", "Ctrl+Alt+Space"),
+            "OVERLAY_ALWAYS_ON_TOP": os.getenv("OVERLAY_ALWAYS_ON_TOP", "true").lower() in {"1", "true", "yes", "si"},
         }
         return {
             "values": values,

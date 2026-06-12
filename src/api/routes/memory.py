@@ -3,9 +3,17 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from src.api.dependencies import memory_service
+from pydantic import BaseModel
+
 from src.api.schemas.memory import MemoryCreateRequest
 
 router = APIRouter()
+
+
+class RagIndexRequest(BaseModel):
+    path: str
+    project_id: str = "default"
+    force: bool = False
 
 
 @router.get("/memory")
@@ -39,3 +47,18 @@ async def rebuild_memory():
 @router.get("/memory/stats")
 async def memory_stats():
     return memory_service().stats()
+
+
+@router.get("/memory/rag/stats")
+async def rag_stats():
+    return memory_service().rag_stats()
+
+
+@router.get("/memory/rag/documents")
+async def rag_documents():
+    return memory_service().rag_documents()
+
+
+@router.post("/memory/rag/index")
+async def rag_index(request: RagIndexRequest):
+    return memory_service().rag_index(request.path, project_id=request.project_id, force=request.force)

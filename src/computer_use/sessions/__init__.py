@@ -1,5 +1,5 @@
 """Session persistence for Computer Use."""
 
-from .store import ComputerUseSessionStore
+from .store import ComputerUseSessionRepository, ComputerUseSessionStore
 
-__all__ = ["ComputerUseSessionStore"]
+__all__ = ["ComputerUseSessionRepository", "ComputerUseSessionStore"]

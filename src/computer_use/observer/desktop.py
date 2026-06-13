@@ -40,6 +40,9 @@ class DesktopObserver:
 
     def observe_desktop(self, *, include_ocr: bool = False) -> DesktopObservation:
         active_window = self.window_manager.get_active_window()
+        decision = self.security.evaluate_scope(OSScope.WINDOW_INSPECT, active_window)
+        if not decision.allowed:
+            return self._blocked_observation(decision.reason)
         open_windows = self.window_manager.list_windows(limit=100)
         controls = self._read_controls(active_window.handle if active_window else None)
         visible_text = self._controls_text(controls)
@@ -62,7 +65,7 @@ class DesktopObserver:
         window = self.window_manager.get_window_info(handle) if handle else self.window_manager.get_active_window()
         decision = self.security.evaluate_scope(OSScope.WINDOW_INSPECT, window)
         if not decision.allowed:
-            raise PermissionError(decision.reason)
+            return self._blocked_observation(decision.reason)
         controls = self._read_controls(window.handle if window else None)
         visible_text = self._controls_text(controls)
         used_sources = [ObservationSource.WINDOW_MANAGER]
@@ -119,6 +122,24 @@ class DesktopObserver:
                 "ui_automation_available": self.ui_automation.available,
                 "vision_provider": self.vision_provider.name,
             },
+            confidence=0.9 if controls else 0.65,
+            limitations=() if controls else ("UI Automation no devolvio controles.",),
+        )
+
+    def _blocked_observation(self, reason: str) -> DesktopObservation:
+        return DesktopObservation(
+            active_window=None,
+            open_windows=(),
+            controls=(),
+            visible_text="",
+            screen_summary="Ventana sensible bloqueada por politica.",
+            source_order=(ObservationSource.WINDOW_MANAGER,),
+            used_sources=(ObservationSource.WINDOW_MANAGER,),
+            metadata={"policy": "blocked"},
+            confidence=1.0,
+            limitations=(reason,),
+            sensitive_content_detected=True,
+            blocked_by_policy=True,
         )
 
     def _read_controls(self, window_handle: int | None):

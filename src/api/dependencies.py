@@ -58,7 +58,7 @@ def workflow_service() -> WorkflowService:
 
 @lru_cache(maxsize=1)
 def computer_use_service() -> ComputerUseService:
-    return ComputerUseService()
+    return ComputerUseService(events=event_bus())
 
 
 def request_id(request: Request) -> str:

@@ -1,5 +1,23 @@
 """Semantic capabilities exposed by the Computer Use Runtime."""
 
-from .registry import HIGH_RISK_CAPABILITIES, SEMANTIC_CAPABILITIES, is_high_risk
+from .registry import (
+    CAPABILITIES,
+    HIGH_RISK_CAPABILITIES,
+    SEMANTIC_CAPABILITIES,
+    Capability,
+    ConfirmationGrant,
+    ConfirmationStore,
+    is_high_risk,
+    require_capability,
+)
 
-__all__ = ["HIGH_RISK_CAPABILITIES", "SEMANTIC_CAPABILITIES", "is_high_risk"]
+__all__ = [
+    "CAPABILITIES",
+    "HIGH_RISK_CAPABILITIES",
+    "SEMANTIC_CAPABILITIES",
+    "Capability",
+    "ConfirmationGrant",
+    "ConfirmationStore",
+    "is_high_risk",
+    "require_capability",
+]

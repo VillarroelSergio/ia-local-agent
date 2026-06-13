@@ -3,6 +3,7 @@ import type {
   BackendStatus,
   ChatResponse,
   ComputerUseObservation,
+  ComputerUseConfirmationResponse,
   ComputerUseSession,
   ComputerUseSessionsResponse,
   Conversation,
@@ -258,11 +259,27 @@ export class ApiClient {
     return this.request<ComputerUseSessionsResponse>(`/api/computer-use/sessions?limit=${limit}`);
   }
 
+  /** Obtiene el estado mas reciente de una sesion de Computer Use. */
+  getComputerUseSession(sessionId: string) {
+    return this.request<ComputerUseSession>(`/api/computer-use/sessions/${encodeURIComponent(sessionId)}`);
+  }
+
   /** Cancela una sesion activa de Computer Use si sigue en ejecucion. */
   cancelComputerUseSession(sessionId: string) {
     return this.request<{ cancelled: boolean; session_id: string }>(`/api/computer-use/sessions/${encodeURIComponent(sessionId)}/cancel`, {
       method: "POST",
     });
+  }
+
+  /** Aprueba o rechaza la confirmacion pendiente de una sesion de Computer Use. */
+  confirmComputerUseSession(sessionId: string, approved: boolean) {
+    return this.request<ComputerUseConfirmationResponse>(
+      `/api/computer-use/sessions/${encodeURIComponent(sessionId)}/confirm`,
+      {
+        method: "POST",
+        body: JSON.stringify({ approved }),
+      },
+    );
   }
 }
 

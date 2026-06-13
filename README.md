@@ -16,6 +16,7 @@ Hecho o funcional como base:
 - Tool calling con registry, permisos, confirmaciones y auditoria JSONL.
 - Desktop App Tauri + React con chat, historial, tools, timeline, settings y memoria.
 - Runtime Windows base: ventanas, capturas, OCR base, eventos, hotkeys, workflows y scheduler.
+- Computer Use MVP con sesiones SQLite, API, eventos, confirmaciones y panel desktop.
 - Overlay Tauri inicial con `Ctrl+Alt+Space`, ventana compacta y lectura segura de ventana activa.
 
 Problemas conocidos:
@@ -206,6 +207,8 @@ ui\desktop\src-tauri\target\release\bundle\msi\IA Local Agent.msi
 
 Mas detalles:
 
+- [docs/COMPUTER_USE_MVP.md](docs/COMPUTER_USE_MVP.md)
+- [docs/COMPUTER_USE_UAT.md](docs/COMPUTER_USE_UAT.md)
 - [docs/DESKTOP_APP_MVP.md](docs/DESKTOP_APP_MVP.md)
 - [docs/WINDOWS_APP_BUILD.md](docs/WINDOWS_APP_BUILD.md)
 - [docs/api.md](docs/api.md)

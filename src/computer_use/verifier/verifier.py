@@ -9,6 +9,10 @@ except ModuleNotFoundError:
 
 
 class ResultVerifier:
+    def __init__(self, *, max_retries: int = 1, backoff_seconds: float = 0.2):
+        self.max_retries = max(0, max_retries)
+        self.backoff_seconds = max(0.0, backoff_seconds)
+
     def verify_step(self, step: PlanStep, observation: DesktopObservation, result: dict | None = None) -> dict:
         expected = step.expected or {}
         if "text_contains" in expected:
@@ -17,12 +21,25 @@ class ResultVerifier:
             return self.verify_control_exists(observation, expected["control_exists"])
         if step.capability == "focus_window" and result and result.get("ok") is False:
             return {"ok": False, "reason": result.get("error", "focus failed")}
+        if result and result.get("ok") is False:
+            return {"ok": False, "reason": result.get("error", "La ejecucion del paso fallo.")}
         return {"ok": True, "reason": "Sin expectativa explicita; paso aceptado si ejecucion no fallo."}
 
     def verify_goal(self, goal: str, observation: DesktopObservation) -> dict:
         if not goal.strip():
             return {"ok": False, "reason": "Objetivo vacio."}
-        return {"ok": True, "reason": "Verificacion de objetivo pendiente de criterio especifico."}
+        normalized = goal.lower()
+        if any(token in normalized for token in ("texto", "leer", "extract")):
+            return {
+                "ok": bool(observation.visible_text.strip()),
+                "reason": "Texto visible extraido." if observation.visible_text.strip() else "No se encontro texto visible.",
+            }
+        if any(token in normalized for token in ("observa", "analiza", "resume", "estado")):
+            return {
+                "ok": not observation.blocked_by_policy,
+                "reason": "Estado del escritorio observado." if not observation.blocked_by_policy else "Observacion bloqueada por politica.",
+            }
+        return {"ok": False, "reason": "El objetivo no tiene un criterio de verificacion soportado."}
 
     def verify_window(self, observation: DesktopObservation, query: str) -> dict:
         window = observation.active_window

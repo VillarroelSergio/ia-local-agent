@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import copy
+import json
 import time
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
@@ -39,6 +41,8 @@ class EventType(str, Enum):
     COMPUTER_USE_VERIFIED = "computer_use.verified"
     COMPUTER_USE_FAILED = "computer_use.failed"
     COMPUTER_USE_COMPLETED = "computer_use.completed"
+    COMPUTER_USE_CANCELLED = "computer_use.cancelled"
+    COMPUTER_USE_CONFIRMATION_REQUIRED = "computer_use.confirmation_required"
     ERROR = "runtime.error"
 
 
@@ -85,10 +89,20 @@ class EventBus:
         self._middleware.append(middleware)
 
     async def publish(self, event: OSEvent) -> bool:
-        processed = event
+        processed = OSEvent(
+            event_type=event.event_type,
+            payload=_safe_payload(event.payload),
+            priority=event.priority,
+            id=event.id,
+            created_at=event.created_at,
+            source=str(event.source)[:100],
+        )
         for middleware in self._middleware:
-            value = middleware(processed)
-            processed = await value if asyncio.iscoroutine(value) else value
+            try:
+                value = middleware(processed)
+                processed = await value if asyncio.iscoroutine(value) else value
+            except Exception:
+                return False
             if processed is None:
                 return False
 
@@ -136,7 +150,7 @@ class DebounceMiddleware:
         self._last_seen: dict[tuple[EventType, str], float] = {}
 
     def __call__(self, event: OSEvent) -> OSEvent | None:
-        key = (event.event_type, str(sorted(event.payload.items())))
+        key = (event.event_type, json.dumps(event.payload, sort_keys=True, default=str))
         now = time.monotonic()
         previous = self._last_seen.get(key)
         if previous is not None and (now - previous) * 1000 < self.window_ms:
@@ -158,3 +172,32 @@ class ThrottleMiddleware:
             return None
         self._timestamps.append(now)
         return event
+
+
+_SENSITIVE_KEYS = frozenset({
+    "api_key", "authorization", "cookie", "password", "secret", "token",
+    "access_token", "refresh_token", "private_key",
+})
+
+
+def _safe_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    def sanitize(value: Any, key: str = "") -> Any:
+        if key.lower() in _SENSITIVE_KEYS:
+            return "[redacted]"
+        if isinstance(value, dict):
+            return {str(item_key)[:200]: sanitize(item, str(item_key)) for item_key, item in value.items()}
+        if isinstance(value, (list, tuple, set)):
+            return [sanitize(item) for item in value]
+        if isinstance(value, Enum):
+            return value.value
+        if isinstance(value, datetime):
+            return value.isoformat()
+        if value is None or isinstance(value, (str, int, float, bool)):
+            return value
+        try:
+            return copy.deepcopy(value)
+        except Exception:
+            return repr(value)[:500]
+
+    sanitized = sanitize(payload)
+    return sanitized if isinstance(sanitized, dict) else {}

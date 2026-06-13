@@ -27,7 +27,7 @@ class ComputerUsePlanner:
         else:
             steps.extend((
                 PlanStep("summarize_active_window", "Observar el estado actual antes de actuar."),
-                PlanStep("automate_task", "Ejecutar el objetivo mediante workflow semantico.", args={"goal": goal}),
+                PlanStep("run_safe_workflow", "Ejecutar el objetivo mediante workflow semantico.", args={"goal": goal}),
             ))
         return Plan(
             goal=goal,

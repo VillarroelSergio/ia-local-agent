@@ -311,6 +311,46 @@ def test_computer_use_observe_run_sessions_and_cancel(monkeypatch, tmp_path):
     assert cancel.json()["session_id"] == session["id"]
 
 
+def test_computer_use_mvp_contract_and_high_risk_confirmation(monkeypatch, tmp_path):
+    client = build_client(monkeypatch, tmp_path)
+
+    status = client.get("/api/computer-use/status", headers=headers())
+    assert status.status_code == 200
+    assert status.json()["available"] is True
+
+    created = client.post(
+        "/api/computer-use/sessions",
+        headers=headers(),
+        json={"goal": "observa el estado actual"},
+    )
+    assert created.status_code == 201
+    session = created.json()
+    assert session["status"] == "created"
+    assert session["correlation_id"]
+
+    run = client.post(
+        f"/api/computer-use/sessions/{session['id']}/run?max_iterations=1",
+        headers=headers(),
+    )
+    assert run.status_code == 200
+
+    low = client.post(
+        "/api/computer-use/execute-capability",
+        headers=headers(),
+        json={"capability": "find_ui_control", "arguments": {"query": "Guardar"}},
+    )
+    assert low.status_code == 200
+    assert low.json()["result"]["policy"]["requires_confirmation"] is False
+
+    high = client.post(
+        "/api/computer-use/execute-capability",
+        headers=headers(),
+        json={"capability": "organize_windows", "arguments": {}},
+    )
+    assert high.status_code == 200
+    assert high.json()["session"]["status"] == "waiting_confirmation"
+
+
 def test_active_window_metadata(monkeypatch, tmp_path):
     client = build_client(monkeypatch, tmp_path)
 

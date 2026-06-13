@@ -136,6 +136,41 @@ def test_chat_searches_youtube_without_llm(monkeypatch, tmp_path):
     assert dependencies.local_agent().provider.requests == []
 
 
+def test_chat_find_control_does_not_fall_through_to_google(monkeypatch, tmp_path):
+    client = build_client(monkeypatch, tmp_path)
+
+    from src.tools_catalog import local
+
+    opened = []
+    monkeypatch.setattr(local.webbrowser, "open", lambda url: opened.append(url) or True)
+
+    response = client.post(
+        "/api/chat",
+        headers=headers(),
+        json={"message": "Busca el boton Guardar, pero no lo pulses.", "use_tools": True},
+    )
+
+    assert response.status_code == 200
+    assert opened == []
+    assert response.json()["metadata"]["tools_executed"] == ["find_ui_control"]
+    assert "Google" not in (response.json()["message"]["content"] or "")
+
+
+def test_chat_organize_windows_requires_confirmation(monkeypatch, tmp_path):
+    client = build_client(monkeypatch, tmp_path)
+
+    response = client.post(
+        "/api/chat",
+        headers=headers(),
+        json={"message": "Organiza mis ventanas.", "use_tools": True},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "confirmacion" in body["message"]["content"].lower()
+    assert body["metadata"]["tools_executed"] == []
+
+
 def test_chat_searches_spotify_without_llm(monkeypatch, tmp_path):
     client = build_client(monkeypatch, tmp_path)
 

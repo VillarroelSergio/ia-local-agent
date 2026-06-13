@@ -177,7 +177,6 @@ def get_active_window(args: BaseModel, ctx: ToolContext):
         "rect": window.rect.__dict__ if window.rect else None,
         "monitor_index": window.monitor_index,
         "state": window.state.value,
-        "executable_path": window.executable_path,
         "app_id": window.app_id,
     }
 

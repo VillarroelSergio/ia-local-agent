@@ -10,7 +10,8 @@ Documento de referencia para agentes que trabajan en IA Local Agent.
 - Repositorio: `https://github.com/VillarroelSergio/ia-local-agent`.
 
 El PDF conserva la presentacion y el diagrama originales. Este Markdown hace
-su contenido localizable y legible por agentes.
+su contenido localizable y legible por agentes. El estado vigente se mantiene
+en [`../ROADMAP.md`](../ROADMAP.md).
 
 ## Regla De Uso
 
@@ -80,6 +81,7 @@ Los enlaces son material de investigacion, no dependencias aprobadas.
 ## Documentacion Relacionada
 
 - `README.md`: estado y roadmap vigente.
+- `docs/ROADMAP.md`: estado verificado, hitos y prioridades vigentes.
 - `docs/WINDOWS_OS_AGENT_ARCHITECTURE.md`: runtime Windows.
 - `docs/COMPUTER_USE_RUNTIME.md`: Computer Use.
 - `docs/DESKTOP_APP_MVP.md`: aplicacion desktop.
@@ -87,4 +89,3 @@ Los enlaces son material de investigacion, no dependencias aprobadas.
 - `docs/RAG_ARCHITECTURE.md`: RAG y memoria.
 - `docs/api.md`: contrato API.
 - `.agents/README.md`: estructura de agentes.
-

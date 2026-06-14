@@ -18,7 +18,9 @@ IA Local Agent es un copiloto local para Windows. Usa LM Studio como proveedor L
 
 ## Estado Del Proyecto
 
-El proyecto esta en cierre de Desktop App MVP e inicio/refinamiento del Overlay Windows.
+El proyecto esta centrado en cerrar Computer Use real y validar el overlay
+sobre aplicaciones Windows. Consulta `docs/ROADMAP.md` para el estado
+verificado, porcentajes de madurez, hitos y prioridades vigentes.
 
 Funcional como base:
 
@@ -143,6 +145,7 @@ SEMANTIC_EMBEDDING_PROVIDER=local_hash
 
 - `docs/reference/IA_LOCAL_WINDOWS.md`: vision, roadmap conceptual y recursos importados desde Notion.
 - `docs/reference/IA_LOCAL_WINDOWS.pdf`: exportacion original con el diagrama de arquitectura/roadmap.
+- `docs/ROADMAP.md`: estado vigente, hitos, prioridades y riesgos.
 - `README.md`: estado, roadmap, arranque rapido y tareas recomendadas.
 - `docs/api.md`: contrato API, auth, chat, WebSocket, seguridad.
 - `docs/DESKTOP_APP_MVP.md`: arquitectura de desktop app y endpoints usados.

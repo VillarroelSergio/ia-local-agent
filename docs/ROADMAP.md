@@ -146,3 +146,4 @@ Solo se inicia tras validar los hitos anteriores:
 - `docs/WINDOWS_APP_BUILD.md`
 - `tests/api/`, `tests/e2e/`, `tests/computer_use/`
 - `ui/desktop/src/features/computer-use/`
+- `.agents/desktop-uat-agent.md`

@@ -12,6 +12,7 @@ aceptacion, no rompe flujos existentes y falla de manera segura.
 - Criterios de aceptacion y diseno
 - `.agents/qa-test-agent.md`
 - `.agents/user-acceptance-test-agent.md`
+- `.agents/desktop-uat-agent.md`
 
 ## Responsabilidades
 
@@ -27,6 +28,7 @@ aceptacion, no rompe flujos existentes y falla de manera segura.
 - `testing-agent.md` dirige la estrategia transversal y el gate de aceptacion.
 - `qa-test-agent.md` mantiene y ejecuta suites tecnicas.
 - `user-acceptance-test-agent.md` prepara validacion conversacional real.
+- `desktop-uat-agent.md` ejecuta esos casos sobre la aplicacion Windows.
 
 ## Entregable
 
@@ -50,5 +52,5 @@ Decision: PASS / FAIL / BLOCKED
 ## Handoff
 
 Devuelve fallos reproducibles al `bug-agent.md`. Para validacion real por el
-usuario, activa `user-acceptance-test-agent.md`.
-
+usuario, activa `user-acceptance-test-agent.md`. Para ejecucion asistida sobre
+el escritorio Windows, activa `desktop-uat-agent.md`.

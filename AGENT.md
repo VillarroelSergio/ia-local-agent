@@ -166,6 +166,7 @@ Usa estos perfiles para revisar, planificar o implementar cambios por area:
 - `.agents/builder-agent.md`
 - `.agents/bug-agent.md`
 - `.agents/testing-agent.md`
+- `.agents/desktop-uat-agent.md`
 - `.agents/backend-api-agent.md`
 - `.agents/frontend-tauri-agent.md`
 - `.agents/windows-overlay-agent.md`
@@ -192,6 +193,7 @@ Plantillas y playbooks:
 - `.agents/task-templates/overlay-change.md`
 - `.agents/task-templates/rag-change.md`
 - `.agents/task-templates/user-acceptance-test.md`
+- `.agents/task-templates/desktop-uat.md`
 - `.agents/decision-trace-template.md`
 - `docs/TESTING_MATRIX.md`
 - `docs/playbooks/diagnose-lmstudio.md`

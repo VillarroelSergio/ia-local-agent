@@ -75,3 +75,17 @@ Flujos manuales:
 - Settings carga y no sobrescribe secretos enmascarados.
 - Overlay abre/cierra y muestra contexto permitido.
 - RAG stats carga si esta habilitado.
+
+## Desktop UAT
+
+Para casos que dependan de foco, ventanas, DPI, UI Automation, confirmaciones
+o efectos visibles, usar:
+
+- `.agents/user-acceptance-test-agent.md` para disenar los casos.
+- `.agents/desktop-uat-agent.md` para ejecutarlos en la app Windows.
+- `.agents/task-templates/desktop-uat.md` para registrar entorno y evidencia.
+- `.agents/testing-agent.md` para decidir el gate.
+
+Una respuesta API o una suite con mocks no sustituye el resultado visible del
+caso desktop. Si no existe acceso al escritorio, clasificarlo como `BLOCKED` o
+`NOT_RUN`.

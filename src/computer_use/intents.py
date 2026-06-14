@@ -31,6 +31,11 @@ _CLICK_CONTROL = re.compile(
     r"(?:boton|control|menu)?\s*(?P<name>.+?)[.\s]*$",
     re.IGNORECASE,
 )
+_EMBEDDED_WRITE_TEXT = re.compile(
+    r"\b(?:escribe|introduce)\s+[\"'](?P<text>.+?)[\"']\s+"
+    r"(?:en|dentro de)\s+(?:el|la)?\s*(?P<name>documento|editor|campo|texto)\b",
+    re.IGNORECASE,
+)
 
 
 def detect_computer_use_intent(message: str) -> ComputerUseIntent | None:
@@ -49,7 +54,7 @@ def detect_computer_use_intent(message: str) -> ComputerUseIntent | None:
             True,
         )
 
-    match = _WRITE_TEXT.match(text)
+    match = _WRITE_TEXT.match(text) or _EMBEDDED_WRITE_TEXT.search(text)
     if match:
         return ComputerUseIntent(
             "fill_text_field",
@@ -88,7 +93,7 @@ def detect_computer_use_intent(message: str) -> ComputerUseIntent | None:
 
     if (
         any(word in text for word in ("analiza", "analizar", "observa", "observar", "resume", "resumir"))
-        and "ventana activa" in text
+        and any(phrase in text for phrase in ("ventana activa", "su ventana", "la ventana"))
     ):
         return ComputerUseIntent(
             "observe_window",

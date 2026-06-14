@@ -40,7 +40,7 @@ inmediato.
 | API local-first | EN VALIDACION | 85% | FastAPI, auth local, chat, streaming, WebSockets, tools, workflows, cancelacion y Computer Use | Unificar cancelacion/errores y validar contratos contra desktop real |
 | Desktop App | EN VALIDACION | 75% | Tauri + React, chat, historial, tools, timeline, settings, memoria y panel Computer Use | Pulido UX, adjuntos, estados de error, gestor RAG y pruebas empaquetadas |
 | Overlay Windows | EN VALIDACION | 55% | Shortcut, ventana flotante, contexto activo, selector de ventana y OCR bajo demanda | Shortcut configurable real, persistencia Tauri, DPI/multi-monitor y confirmaciones robustas |
-| Computer Use | EN DESARROLLO | 45% | Sesiones SQLite, Observe-Plan-Act-Verify, API, eventos, panel, UIA de lectura y routing natural | `invoke_control`, `set_text`, verificacion real, planner por app y nuevo UAT completo |
+| Computer Use | EN DESARROLLO | 25% | Adaptadores UIA de lectura/escritura, sesiones, API y panel existen de forma aislada | Conectar el chat a un orquestador real, descomponer prompts compuestos y superar UAT manual sin respuestas simuladas |
 | Workflows y automatizacion | EN DESARROLLO | 45% | Runner, reintentos basicos, cancelacion, historial y scheduler | DSL estable, estado durable, condiciones visuales, rollback y monitor de tareas |
 | OCR y contexto visual | EN DESARROLLO | 45% | Captura y Tesseract bajo demanda con politica de ventanas | Crop fiable, idiomas empaquetados, fallback controlado, DPI y proveedor local mejorado |
 | RAG y memoria | EN VALIDACION | 70% | Chroma, ingestion segura, manifest, busqueda, memoria y panel basico | Borrado/reindexado por documento, fuentes visibles y pruebas con corpus real |
@@ -113,11 +113,13 @@ Solo se inicia tras validar los hitos anteriores:
 
 ## Proximas Tareas Priorizadas
 
-1. Implementar `UIAutomationService.invoke_control`.
-2. Implementar `UIAutomationService.set_text` y bloquear password fields.
-3. Conectar ambas operaciones al executor de Computer Use.
-4. Verificar acciones mediante una nueva observacion UIA.
-5. Repetir y actualizar `COMPUTER_USE_UAT.md` con resultados reales.
+1. Sustituir el routing de una sola accion por un orquestador de tareas
+   compuestas conectado al chat.
+2. Implementar un flujo real de Notepad: abrir instancia aislada, observar,
+   confirmar, escribir, guardar y verificar.
+3. Mantener identidad de PID, HWND y documento durante confirmaciones.
+4. Convertir los prompts UAT fallidos en regresiones de integracion del chat.
+5. Repetir el UAT manual y no avanzar el hito hasta obtener evidencia real.
 6. Probar overlay y Computer Use con Notepad, Explorer y VS Code.
 7. Empaquetar y probar dependencias UIA/OCR en el instalador.
 8. Cerrar shortcut y bounds persistentes del overlay.

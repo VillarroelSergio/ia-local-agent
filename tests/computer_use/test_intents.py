@@ -20,3 +20,22 @@ def test_uat_prompts_route_to_computer_use():
 
 def test_generic_web_search_is_not_claimed():
     assert detect_computer_use_intent("Busca Daft Punk en YouTube") is None
+
+
+def test_user_uat_prompts_do_not_fall_through_to_chat_or_app_name_parser():
+    prompts = {
+        (
+            "Abre Notepad con un documento nuevo y vacio. Cuando este listo, "
+            "analiza su ventana sin usar OCR y dime que aplicacion y controles "
+            "accesibles detectas."
+        ): "observe_window",
+        (
+            "En el documento nuevo de Notepad, escribe 'Computer Use UAT OK' "
+            "en el documento."
+        ): "fill_text_field",
+    }
+
+    for prompt, tool_name in prompts.items():
+        intent = detect_computer_use_intent(prompt)
+        assert intent is not None
+        assert intent.tool_name == tool_name

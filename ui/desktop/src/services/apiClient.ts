@@ -2,6 +2,10 @@ import type {
   ActiveWindowResponse,
   BackendStatus,
   ChatResponse,
+  ComputerUseObservation,
+  ComputerUseConfirmationResponse,
+  ComputerUseSession,
+  ComputerUseSessionsResponse,
   Conversation,
   ConversationMessages,
   LmStudioDiagnostics,
@@ -232,6 +236,50 @@ export class ApiClient {
       method: "POST",
       body: JSON.stringify({ path, project_id, force }),
     });
+  }
+
+  /** Ejecuta un objetivo mediante Computer Use Runtime. */
+  runComputerUse(goal: string, max_iterations = 3) {
+    return this.request<ComputerUseSession>("/api/computer-use/run", {
+      method: "POST",
+      body: JSON.stringify({ goal, max_iterations }),
+    });
+  }
+
+  /** Observa el escritorio sin OCR salvo peticion explicita. */
+  observeComputerUse(include_ocr = false) {
+    return this.request<ComputerUseObservation>("/api/computer-use/observe", {
+      method: "POST",
+      body: JSON.stringify({ include_ocr }),
+    });
+  }
+
+  /** Lista sesiones recientes de Computer Use. */
+  listComputerUseSessions(limit = 10) {
+    return this.request<ComputerUseSessionsResponse>(`/api/computer-use/sessions?limit=${limit}`);
+  }
+
+  /** Obtiene el estado mas reciente de una sesion de Computer Use. */
+  getComputerUseSession(sessionId: string) {
+    return this.request<ComputerUseSession>(`/api/computer-use/sessions/${encodeURIComponent(sessionId)}`);
+  }
+
+  /** Cancela una sesion activa de Computer Use si sigue en ejecucion. */
+  cancelComputerUseSession(sessionId: string) {
+    return this.request<{ cancelled: boolean; session_id: string }>(`/api/computer-use/sessions/${encodeURIComponent(sessionId)}/cancel`, {
+      method: "POST",
+    });
+  }
+
+  /** Aprueba o rechaza la confirmacion pendiente de una sesion de Computer Use. */
+  confirmComputerUseSession(sessionId: string, approved: boolean) {
+    return this.request<ComputerUseConfirmationResponse>(
+      `/api/computer-use/sessions/${encodeURIComponent(sessionId)}/confirm`,
+      {
+        method: "POST",
+        body: JSON.stringify({ approved }),
+      },
+    );
   }
 }
 

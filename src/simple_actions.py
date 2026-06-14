@@ -200,10 +200,26 @@ def _extract_open_target(text: str) -> str | None:
     if not match:
         return None
     target = text[match.end():].strip(" .")
+    # Opening an application is a single-action shortcut. Compound desktop
+    # requests must be handled by Computer Use instead of treating the whole
+    # prompt as an application name.
+    if _is_compound_open_request(target):
+        return None
     target = _strip_articles(target)
     if target in {"navegador", "browser"}:
         target = "google"
     return target or None
+
+
+def _is_compound_open_request(target: str) -> bool:
+    return bool(
+        re.search(r"[.;]\s+\w", target)
+        or re.search(
+            r"\b(?:cuando|despues|luego|y\s+(?:analiza|escribe|busca|pulsa|verifica|organiza))\b",
+            target,
+            re.IGNORECASE,
+        )
+    )
 
 
 def _strip_articles(value: str) -> str:

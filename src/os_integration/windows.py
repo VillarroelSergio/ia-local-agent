@@ -35,9 +35,10 @@ class WindowManager:
     def get_active_window(self) -> WindowInfo | None:
         if user32 is None:
             return None
-        handle = int(user32.GetForegroundWindow())
-        if not handle:
+        raw_handle = user32.GetForegroundWindow()
+        if not raw_handle:
             return None
+        handle = int(raw_handle)
         return self.get_window_info(handle)
 
     def get_window_info(self, handle: int) -> WindowInfo:

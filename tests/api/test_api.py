@@ -22,6 +22,7 @@ def build_client(monkeypatch, tmp_path, *, rate_limit="120"):
     monkeypatch.setenv("CONVERSATIONS_PATH", str(tmp_path / "conversations.sqlite3"))
     monkeypatch.setenv("CHROMA_PATH", str(tmp_path / "chroma"))
     monkeypatch.setenv("SETTINGS_ENV_PATH", str(tmp_path / ".env"))
+    monkeypatch.setenv("COMPUTER_USE_SESSIONS_PATH", str(tmp_path / "computer_use.sqlite3"))
     monkeypatch.setenv("API_RATE_LIMIT_PER_MINUTE", rate_limit)
 
     from src.api import dependencies
@@ -33,6 +34,7 @@ def build_client(monkeypatch, tmp_path, *, rate_limit="120"):
     dependencies.memory_service.cache_clear()
     dependencies.settings_service.cache_clear()
     dependencies.event_bus.cache_clear()
+    dependencies.computer_use_service.cache_clear()
     app = create_app()
     client = TestClient(app)
     dependencies.local_agent().provider = FakeProvider(["Hola desde API"])
@@ -132,6 +134,77 @@ def test_chat_searches_youtube_without_llm(monkeypatch, tmp_path):
     assert body["message"]["content"] == "Buscando daft punk en YouTube."
     assert body["metadata"]["tools_executed"] == ["open_url"]
     assert dependencies.local_agent().provider.requests == []
+
+
+def test_chat_find_control_does_not_fall_through_to_google(monkeypatch, tmp_path):
+    client = build_client(monkeypatch, tmp_path)
+
+    from src.tools_catalog import local
+
+    opened = []
+    monkeypatch.setattr(local.webbrowser, "open", lambda url: opened.append(url) or True)
+
+    response = client.post(
+        "/api/chat",
+        headers=headers(),
+        json={"message": "Busca el boton Guardar, pero no lo pulses.", "use_tools": True},
+    )
+
+    assert response.status_code == 200
+    assert opened == []
+    assert response.json()["metadata"]["tools_executed"] == ["find_ui_control"]
+    assert "Google" not in (response.json()["message"]["content"] or "")
+
+
+def test_chat_organize_windows_requires_confirmation(monkeypatch, tmp_path):
+    client = build_client(monkeypatch, tmp_path)
+
+    response = client.post(
+        "/api/chat",
+        headers=headers(),
+        json={"message": "Organiza mis ventanas.", "use_tools": True},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "confirmacion" in body["message"]["content"].lower()
+    assert body["metadata"]["tools_executed"] == []
+
+
+def test_chat_routes_compound_notepad_prompt_to_computer_use_session(monkeypatch, tmp_path):
+    client = build_client(monkeypatch, tmp_path)
+
+    from src.computer_use.models import ComputerUseSession, ComputerUseStatus
+    from src.tools_catalog import computer_use
+
+    class FakeComputerUseEngine:
+        async def run_goal(self, goal, *, max_iterations):
+            session = ComputerUseSession(goal=goal)
+            session.transition(ComputerUseStatus.RUNNING)
+            session.transition(ComputerUseStatus.WAITING_CONFIRMATION)
+            session.state["pending_confirmation"] = {
+                "capability": "fill_text_field",
+                "description": "Escribir en el documento activo de Notepad.",
+            }
+            return session
+
+    monkeypatch.setattr(computer_use, "_ENGINE", FakeComputerUseEngine())
+    prompt = (
+        "Abre Notepad con un documento nuevo y vacio. Cuando este listo, "
+        "escribe 'Computer Use UAT OK' en el documento."
+    )
+
+    response = client.post(
+        "/api/chat",
+        headers=headers(),
+        json={"message": prompt, "use_tools": True},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["metadata"]["tools_executed"] == ["computer_use"]
+    assert "confirmacion" in body["message"]["content"].lower()
+    assert "computer use" in body["message"]["content"].lower()
 
 
 def test_chat_searches_spotify_without_llm(monkeypatch, tmp_path):
@@ -282,6 +355,93 @@ def test_workflow_run_mock(monkeypatch, tmp_path):
     run = client.post("/api/workflows/file_search/run", headers=headers(), json={"input": {"query": "x"}}).json()
     assert run["status"] == "completed"
     assert client.get(f"/api/workflows/runs/{run['run_id']}", headers=headers()).status_code == 200
+
+
+def test_computer_use_observe_run_sessions_and_cancel(monkeypatch, tmp_path):
+    client = build_client(monkeypatch, tmp_path)
+
+    observe = client.post("/api/computer-use/observe", headers=headers(), json={"include_ocr": False})
+    assert observe.status_code == 200
+    assert "screen_summary" in observe.json()
+
+    run = client.post(
+        "/api/computer-use/run",
+        headers=headers(),
+        json={"goal": "observa el estado actual", "max_iterations": 1},
+    )
+    assert run.status_code == 200
+    session = run.json()
+    assert session["goal"] == "observa el estado actual"
+    assert session["status"] in {"completed", "aborted", "failed"}
+
+    sessions = client.get("/api/computer-use/sessions", headers=headers()).json()
+    assert any(item["id"] == session["id"] for item in sessions["sessions"])
+
+    cancel = client.post(f"/api/computer-use/sessions/{session['id']}/cancel", headers=headers())
+    assert cancel.status_code == 200
+    assert cancel.json()["session_id"] == session["id"]
+
+
+def test_computer_use_mvp_contract_and_high_risk_confirmation(monkeypatch, tmp_path):
+    client = build_client(monkeypatch, tmp_path)
+
+    status = client.get("/api/computer-use/status", headers=headers())
+    assert status.status_code == 200
+    assert status.json()["available"] is True
+
+    created = client.post(
+        "/api/computer-use/sessions",
+        headers=headers(),
+        json={"goal": "observa el estado actual"},
+    )
+    assert created.status_code == 201
+    session = created.json()
+    assert session["status"] == "created"
+    assert session["correlation_id"]
+
+    run = client.post(
+        f"/api/computer-use/sessions/{session['id']}/run?max_iterations=1",
+        headers=headers(),
+    )
+    assert run.status_code == 200
+
+    low = client.post(
+        "/api/computer-use/execute-capability",
+        headers=headers(),
+        json={"capability": "find_ui_control", "arguments": {"query": "Guardar"}},
+    )
+    assert low.status_code == 200
+    assert low.json()["result"]["policy"]["requires_confirmation"] is False
+
+    high = client.post(
+        "/api/computer-use/execute-capability",
+        headers=headers(),
+        json={"capability": "organize_windows", "arguments": {}},
+    )
+    assert high.status_code == 200
+    assert high.json()["session"]["status"] == "waiting_confirmation"
+
+    click = client.post(
+        "/api/computer-use/execute-capability",
+        headers=headers(),
+        json={"capability": "click_ui_control", "arguments": {"name": "Guardar"}},
+    )
+    assert click.status_code == 200
+    assert click.json()["session"]["status"] == "waiting_confirmation"
+    assert click.json()["result"]["policy"]["requires_confirmation"] is True
+
+    write = client.post(
+        "/api/computer-use/execute-capability",
+        headers=headers(),
+        json={
+            "capability": "fill_text_field",
+            "arguments": {"name": "documento", "text": "private test value"},
+        },
+    )
+    assert write.status_code == 200
+    pending = write.json()["session"]["state"]["pending_confirmation"]["arguments"]
+    assert pending["text"] == "[redacted]"
+    assert "private test value" not in str(write.json())
 
 
 def test_active_window_metadata(monkeypatch, tmp_path):

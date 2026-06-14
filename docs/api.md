@@ -97,6 +97,14 @@ Conversaciones: `GET /api/conversations`, `POST /api/conversations`, `GET/PATCH/
 
 Workflows: `GET /api/workflows`, `POST /api/workflows/{name}/run`, `GET /api/workflows/runs/{id}`, `POST /api/workflows/runs/{id}/cancel`.
 
+Computer Use: `GET /api/computer-use/status`, `POST /api/computer-use/sessions`,
+`GET /api/computer-use/sessions`, `GET /api/computer-use/sessions/{id}`,
+`POST /api/computer-use/sessions/{id}/run`,
+`POST /api/computer-use/sessions/{id}/cancel`,
+`POST /api/computer-use/sessions/{id}/confirm`,
+`POST /api/computer-use/observe`, `POST /api/computer-use/observe/window`,
+`POST /api/computer-use/find-control` y `POST /api/computer-use/execute-capability`.
+
 ## Seguridad
 
 La API es local-first: binding localhost por defecto, CORS restrictivo, API key, rate limit, límite de tamaño, errores sin stack trace en producción y auditoría JSONL para tools. Las tools de alto riesgo pasan por la política existente de `ToolExecutor`; las destructivas/admin se deniegan y las que requieren confirmación devuelven `tool.confirmation_required`.

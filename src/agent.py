@@ -17,6 +17,7 @@ from uuid import uuid4
 try:
     from config import get_settings
     from context import ApproxTokenCounter, ContextBuilder, SlidingWindowPolicy
+    from computer_use.intents import detect_computer_use_intent
     from conversations import ConversationManager, ConversationStore, Message
     from prompts import PromptManager
     from providers import LLMRequest, ProviderError, build_provider_registry
@@ -28,6 +29,7 @@ try:
 except ModuleNotFoundError:
     from src.config import get_settings
     from src.context import ApproxTokenCounter, ContextBuilder, SlidingWindowPolicy
+    from src.computer_use.intents import detect_computer_use_intent
     from src.conversations import ConversationManager, ConversationStore, Message
     from src.prompts import PromptManager
     from src.providers import LLMRequest, ProviderError, build_provider_registry
@@ -713,14 +715,15 @@ class LocalAgent:
         original_user_input = self.context_builder.get_last_user_input(
             self.conversations.get_messages()
         )
-        simple_action = detect_simple_action(original_user_input)
+        computer_use_action = detect_computer_use_intent(original_user_input)
+        simple_action = computer_use_action or detect_simple_action(original_user_input)
 
         if simple_action:
             result = self.tool_executor.execute_sync(
                 simple_action.tool_name,
                 simple_action.arguments,
                 ToolContext(settings=self.settings),
-                require_preapproved=True,
+                require_preapproved=not getattr(simple_action, "requires_confirmation", False),
             )
             self.conversations.append(Message(
                 role="tool",
@@ -781,6 +784,22 @@ class LocalAgent:
             return f"No he podido hacerlo: {error}"
         if isinstance(result, dict) and result.get("error"):
             return f"No he podido hacerlo: {result['error']}"
+        if isinstance(result, dict) and result.get("error_type") == "confirmation_required":
+            return "Esta accion requiere confirmacion antes de continuar."
+        if simple_action.tool_name == "observe_window" and isinstance(result, dict):
+            if result.get("blocked_by_policy"):
+                return "No puedo leer esa ventana porque esta bloqueada por la politica de seguridad."
+            text = str(result.get("visible_text") or "").strip()
+            summary = str(result.get("screen_summary") or "Ventana activa observada.").strip()
+            return f"{summary}\n\nTexto accesible:\n{text[:4000]}" if text else (
+                f"{summary}\n\nNo se encontro texto accesible mediante UI Automation. No se ejecuto OCR."
+            )
+        if simple_action.tool_name == "find_ui_control" and isinstance(result, dict):
+            control = result.get("control")
+            return (
+                f"Control encontrado: {control.get('name')} ({control.get('control_type')}). No se ha pulsado."
+                if control else "No se encontro ese control mediante UI Automation. No se ha realizado ninguna accion."
+            )
         return simple_action.user_message
 
     def submit_user_message(self, content):

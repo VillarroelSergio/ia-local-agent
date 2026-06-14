@@ -6,7 +6,11 @@ Objetivo: evolucionar de chat local a copiloto privado para Windows, con memoria
 
 ## Estado Actual
 
-El proyecto esta en cierre de Desktop App MVP e inicio de Overlay Windows.
+El proyecto tiene una plataforma local-first funcional y se encuentra
+centrado en convertir Computer Use y el overlay en una experiencia Windows
+realmente util. Desktop, API, RAG y seguridad existen como base, pero el
+producto todavia no completa de forma fiable el ciclo observar, actuar y
+verificar sobre aplicaciones reales.
 
 Hecho o funcional como base:
 
@@ -16,6 +20,7 @@ Hecho o funcional como base:
 - Tool calling con registry, permisos, confirmaciones y auditoria JSONL.
 - Desktop App Tauri + React con chat, historial, tools, timeline, settings y memoria.
 - Runtime Windows base: ventanas, capturas, OCR base, eventos, hotkeys, workflows y scheduler.
+- Computer Use MVP con sesiones SQLite, API, eventos, confirmaciones y panel desktop.
 - Overlay Tauri inicial con `Ctrl+Alt+Space`, ventana compacta y lectura segura de ventana activa.
 
 Problemas conocidos:
@@ -159,37 +164,30 @@ data/                      Datos locales ignorados por Git
 
 ## Roadmap De Implementacion
 
-Leyenda: `OK`, `PARCIAL`, `PENDIENTE`.
+Estado verificado el **14 de junio de 2026**:
 
-| Area | Estado | Pendiente |
-| --- | --- | --- |
-| Core agente local | PARCIAL | Robustecer providers, tool calling, errores y recuperacion de turnos incompletos. |
-| LM Studio | PARCIAL | Diagnostico basico implementado; falta selector de modelo desde UI y autocorreccion de `.env`. |
-| API local-first | PARCIAL | Mejor manejo de errores de provider, cancelacion consistente, endpoints de diagnostico LM Studio. |
-| Desktop App MVP | PARCIAL | Pulir empty states, errores visibles, gestor RAG visual, adjuntos y mejor feedback de streaming. |
-| Overlay Windows | PARCIAL | Contexto nativo inicial, foco y bounds basicos; falta endurecer deteccion, shortcut configurable real en Rust. |
-| Seguridad | PARCIAL | Confirmaciones seguras en overlay, politica por app, modo seguro visible, auditoria mas legible. |
-| Windows Runtime | PARCIAL | UI Automation selectors, eventos nativos WinEvent, clipboard/power/idle/process publishers. |
-| Workflows | PARCIAL | Persistencia SQLite, DSL estable, reintentos visuales, rollback basico, monitor de tareas. |
-| OCR/contexto visual | PARCIAL | OCR bajo demanda, crop por ventana/region, mejores providers, proteccion de ventanas sensibles. |
-| RAG/memoria | PARCIAL | Gestor visual minimo implementado; falta borrado/reindexado por documento y fuentes en UI. |
-| Multi-modelo | PENDIENTE | Routing por tarea, embeddings separados, Ollama/vLLM, servidor en red local opcional. |
-| Voz local | PENDIENTE | Whisper.cpp, Piper TTS, wake word y UX manos libres. |
-| Optimizacion | PENDIENTE | Latencia, tokens, retrieval, OCR, eventos y empaquetado. |
-| Personalizacion | PENDIENTE | Datasets, LoRA, perfiles por tarea y especializacion local. |
+| Area | Estado | Madurez |
+| --- | --- | ---: |
+| Core agente local | EN VALIDACION | 75% |
+| Seguridad, permisos y auditoria | EN VALIDACION | 70% |
+| Windows Runtime | EN DESARROLLO | 60% |
+| API local-first | EN VALIDACION | 85% |
+| Desktop App | EN VALIDACION | 75% |
+| Overlay Windows | EN VALIDACION | 55% |
+| Computer Use | EN DESARROLLO | 45% |
+| Workflows y automatizacion | EN DESARROLLO | 45% |
+| OCR y contexto visual | EN DESARROLLO | 45% |
+| RAG y memoria | EN VALIDACION | 70% |
+| Build y distribucion | EN VALIDACION | 65% |
+| Multi-modelo | NO INICIADO | 5% |
+| Voz local | NO INICIADO | 0% |
+| Personalizacion | NO INICIADO | 0% |
 
-## Proximas Tareas Recomendadas
+Prioridad actual: completar un flujo Computer Use real con UI Automation:
+observar, localizar, confirmar, actuar y verificar.
 
-1. Probar `/api/system/lmstudio` con LM Studio real y ajustar el ID de modelo.
-2. Probar selector manual de ventanas con VS Code, navegador, Explorer y apps minimizadas.
-3. Refinar OCR overlay con ventanas minimizadas, DPI alto y multi-monitor.
-4. Hacer que el shortcut configurado en settings se aplique en Rust al reiniciar.
-5. Persistir bounds del overlay en backend o storage Tauri, no solo `localStorage`.
-6. Anadir test frontend de `OverlayView`.
-7. Anadir borrado/reindexado por documento en gestor RAG.
-8. Mostrar fuentes RAG usadas en respuestas.
-9. Endurecer confirmaciones overlay para acciones de alto riesgo.
-10. Implementar UI Automation selectors.
+El desglose, criterios de salida, hitos, riesgos y tareas priorizadas viven en
+[docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Build Windows
 
@@ -206,6 +204,9 @@ ui\desktop\src-tauri\target\release\bundle\msi\IA Local Agent.msi
 
 Mas detalles:
 
+- [docs/ROADMAP.md](docs/ROADMAP.md)
+- [docs/COMPUTER_USE_MVP.md](docs/COMPUTER_USE_MVP.md)
+- [docs/COMPUTER_USE_UAT.md](docs/COMPUTER_USE_UAT.md)
 - [docs/DESKTOP_APP_MVP.md](docs/DESKTOP_APP_MVP.md)
 - [docs/WINDOWS_APP_BUILD.md](docs/WINDOWS_APP_BUILD.md)
 - [docs/api.md](docs/api.md)

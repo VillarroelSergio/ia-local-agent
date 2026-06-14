@@ -11,6 +11,8 @@ uvicorn[standard]
 pillow
 mss
 pytesseract
+uiautomation
+pywinauto
 pyautogui
 keyboard
 pywin32; platform_system == "Windows"

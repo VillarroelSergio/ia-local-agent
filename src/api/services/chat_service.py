@@ -7,6 +7,7 @@ from typing import Any, AsyncIterator
 from uuid import uuid4
 
 from src.agent import LocalAgent
+from src.computer_use.intents import detect_computer_use_intent
 from src.conversations import Message
 from src.providers import LLMRequest
 from src.simple_actions import SimpleAction, detect_simple_action
@@ -81,7 +82,10 @@ class AgentService:
             yield self._chunk("message.started", request_id, request.correlation_id, data={"conversation_id": conversation.id})
 
             try:
-                simple_action = detect_simple_action(request.message) if request.use_tools else None
+                simple_action = (
+                    detect_computer_use_intent(request.message)
+                    or detect_simple_action(request.message)
+                ) if request.use_tools else None
                 if simple_action:
                     async for chunk in self._execute_simple_action(
                         simple_action,
@@ -284,7 +288,7 @@ class AgentService:
         result = await self.agent.tool_executor.execute(
             call,
             ToolContext(conversation_id=conversation_id, settings=self.agent.settings),
-            require_preapproved=True,
+            require_preapproved=not getattr(action, "requires_confirmation", False),
         )
         self.agent.conversations.append(Message(
             role="tool",
@@ -294,16 +298,48 @@ class AgentService:
         ))
         data = result.model_dump(mode="json")
         data.update({"id": call.id, "name": action.tool_name})
-        yield self._chunk("tool.completed" if result.ok else "tool.failed", request_id, correlation_id, data=data)
+        event_type = "tool.confirmation_required" if result.requires_user_action else ("tool.completed" if result.ok else "tool.failed")
+        yield self._chunk(event_type, request_id, correlation_id, data=data)
 
-        message = self._format_simple_action_response(action, result.to_message_content())
+        message = self._format_simple_action_response(action, result.to_message_content(), result.requires_user_action)
         self.agent.conversations.append(Message(role="assistant", content=message))
         yield self._chunk("message.delta", request_id, correlation_id, delta=message)
 
     @staticmethod
-    def _format_simple_action_response(action: SimpleAction, result: Any):
+    def _format_simple_action_response(action: SimpleAction, result: Any, requires_user_action: bool = False):
+        if requires_user_action:
+            return "Esta accion requiere tu confirmacion antes de organizar las ventanas."
         if isinstance(result, dict) and result.get("error"):
             return f"No he podido hacerlo: {result['error']}"
+        if action.tool_name == "observe_window" and isinstance(result, dict):
+            if result.get("blocked_by_policy"):
+                return "No puedo leer esa ventana porque esta bloqueada por la politica de seguridad."
+            text = str(result.get("visible_text") or "").strip()
+            summary = str(result.get("screen_summary") or "Ventana activa observada.").strip()
+            if text:
+                return f"{summary}\n\nTexto accesible:\n{text[:4000]}"
+            return f"{summary}\n\nNo se encontro texto accesible mediante UI Automation. No se ejecuto OCR."
+        if action.tool_name == "find_ui_control" and isinstance(result, dict):
+            control = result.get("control")
+            if control:
+                return f"Control encontrado: {control.get('name')} ({control.get('control_type')}). No se ha pulsado."
+            return "No se encontro ese control mediante UI Automation. No se ha realizado ninguna accion."
+        if action.tool_name == "computer_use" and isinstance(result, dict):
+            status = result.get("status")
+            session_id = result.get("id")
+            if status == "waiting_confirmation":
+                pending = (result.get("state") or {}).get("pending_confirmation") or {}
+                description = pending.get("description") or "La siguiente accion modifica la ventana."
+                return (
+                    f"Sesion Computer Use {session_id} preparada. {description} "
+                    "Necesito tu confirmacion para continuar."
+                )
+            if status == "completed":
+                return f"Sesion Computer Use {session_id} completada y verificada."
+            error = result.get("error")
+            if status in {"failed", "aborted", "cancelled"}:
+                return f"La sesion Computer Use {session_id} termino como {status}: {error or 'sin detalle adicional'}."
+            return f"Sesion Computer Use {session_id} en estado {status or 'desconocido'}."
         return action.user_message
 
     async def _final_response_after_tools(self, request: ChatRequest, request_id: str, conversation_id: str, tool_results: list[dict[str, Any]]):

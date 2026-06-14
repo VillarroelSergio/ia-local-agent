@@ -8,6 +8,7 @@ from src.computer_use.models import (
     UIControl,
 )
 from src.computer_use.planner import ComputerUsePlanner
+from src.computer_use.engine import ComputerUseEngine
 from src.computer_use.verifier import ResultVerifier
 from src.os_integration.models import WindowInfo
 
@@ -94,3 +95,40 @@ def test_verify_window_matches_title_or_process_case_insensitively():
     assert verifier.verify_window(observation, "visual studio")["ok"]
     assert verifier.verify_window(observation, "code.exe")["ok"]
     assert verifier.verify_window(DesktopObservation(), "code")["ok"] is False
+
+
+def test_planner_builds_real_notepad_observe_and_write_plans():
+    planner = ComputerUsePlanner()
+
+    observe = planner.create_plan(
+        "Abre Notepad con un documento nuevo. Cuando este listo, analiza su ventana."
+    )
+    write = planner.create_plan(
+        "En Notepad, escribe 'Computer Use UAT OK' en el documento."
+    )
+
+    assert tuple(step.capability for step in observe.steps) == (
+        "open_application",
+        "summarize_active_window",
+    )
+    assert tuple(step.capability for step in write.steps) == ("fill_text_field",)
+    assert write.steps[0].args["text"] == "Computer Use UAT OK"
+
+
+def test_verifier_checks_quoted_text_for_write_goal():
+    result = ResultVerifier().verify_goal(
+        "Escribe 'Computer Use UAT OK' en el documento.",
+        DesktopObservation(visible_text="Computer Use UAT OK"),
+    )
+
+    assert result["ok"] is True
+
+
+def test_resume_plan_starts_at_pending_capability_without_repeating_open():
+    plan = ComputerUsePlanner().create_plan(
+        "Abre Notepad y escribe 'Computer Use UAT OK' en el documento."
+    )
+
+    resumed = ComputerUseEngine._resume_plan_from_capability(plan, "fill_text_field")
+
+    assert tuple(step.capability for step in resumed.steps) == ("fill_text_field",)

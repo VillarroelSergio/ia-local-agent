@@ -58,6 +58,7 @@ class ComputerUseEngine:
             security=self.runtime.security,
             confirmations=self.confirmations,
             ui_automation=self.observer.ui_automation,
+            application_manager=self.runtime.application_manager,
         )
         self.session_store = session_store or ComputerUseSessionStore(Path(PROJECT_ROOT) / "data" / "computer_use.sqlite3")
         self.max_iterations = max_iterations
@@ -87,6 +88,9 @@ class ComputerUseEngine:
             raise KeyError(f"Sesion de Computer Use no encontrada: {session_id}")
         if session.status not in {ComputerUseStatus.CREATED, ComputerUseStatus.WAITING_CONFIRMATION}:
             raise ValueError(f"La sesion no se puede ejecutar desde estado {session.status.value}.")
+        pending_capability = None
+        if session.status == ComputerUseStatus.WAITING_CONFIRMATION:
+            pending_capability = (session.state.get("pending_confirmation") or {}).get("capability")
         session.transition(ComputerUseStatus.RUNNING)
         self._cancel_events[session.id] = asyncio.Event()
         self._tasks[session.id] = asyncio.current_task()
@@ -116,6 +120,8 @@ class ComputerUseEngine:
                 })
 
                 plan = self.planner.create_plan(session.goal, observation)
+                if pending_capability:
+                    plan = self._resume_plan_from_capability(plan, pending_capability)
                 graph = self.planner.execution_graph(plan)
                 session.plan = {
                     "id": plan.id,
@@ -261,3 +267,14 @@ class ComputerUseEngine:
         if isinstance(error, (PermissionError, ValueError, KeyError)):
             return str(error)[:500]
         return "computer_use_internal_error"
+
+    @staticmethod
+    def _resume_plan_from_capability(plan, capability: str):
+        for index, step in enumerate(plan.steps):
+            if step.capability == capability:
+                return type(plan)(
+                    goal=plan.goal,
+                    steps=plan.steps[index:],
+                    rationale=f"{plan.rationale} Reanudado desde {capability}.",
+                )
+        raise ValueError("La accion pendiente ya no existe en el plan recalculado.")

@@ -171,6 +171,42 @@ def test_chat_organize_windows_requires_confirmation(monkeypatch, tmp_path):
     assert body["metadata"]["tools_executed"] == []
 
 
+def test_chat_routes_compound_notepad_prompt_to_computer_use_session(monkeypatch, tmp_path):
+    client = build_client(monkeypatch, tmp_path)
+
+    from src.computer_use.models import ComputerUseSession, ComputerUseStatus
+    from src.tools_catalog import computer_use
+
+    class FakeComputerUseEngine:
+        async def run_goal(self, goal, *, max_iterations):
+            session = ComputerUseSession(goal=goal)
+            session.transition(ComputerUseStatus.RUNNING)
+            session.transition(ComputerUseStatus.WAITING_CONFIRMATION)
+            session.state["pending_confirmation"] = {
+                "capability": "fill_text_field",
+                "description": "Escribir en el documento activo de Notepad.",
+            }
+            return session
+
+    monkeypatch.setattr(computer_use, "_ENGINE", FakeComputerUseEngine())
+    prompt = (
+        "Abre Notepad con un documento nuevo y vacio. Cuando este listo, "
+        "escribe 'Computer Use UAT OK' en el documento."
+    )
+
+    response = client.post(
+        "/api/chat",
+        headers=headers(),
+        json={"message": prompt, "use_tools": True},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["metadata"]["tools_executed"] == ["computer_use"]
+    assert "confirmacion" in body["message"]["content"].lower()
+    assert "computer use" in body["message"]["content"].lower()
+
+
 def test_chat_searches_spotify_without_llm(monkeypatch, tmp_path):
     client = build_client(monkeypatch, tmp_path)
 

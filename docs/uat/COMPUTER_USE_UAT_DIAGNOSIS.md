@@ -37,8 +37,11 @@ aunque no existia un orquestador que las encadenase desde lenguaje natural.
 
 ## Trabajo Pendiente
 
-La correccion inmediata evita el error y parte de las respuestas inventadas,
-pero no completa el flujo solicitado. El siguiente entregable debe ser un
-orquestador de tareas de Notepad con estado, identidad de ventana,
-confirmaciones y verificacion posterior. Hasta entonces el hito permanece
-`EN DESARROLLO`.
+Se ha conectado el chat al motor para objetivos compuestos de Notepad y se han
+anadido planes reales de apertura, observacion, escritura y guardado. La
+escritura y el click se detienen antes de actuar y se reanudan mediante la
+confirmacion de la sesion.
+
+Todavia falta validar este flujo sobre Windows real y asociar una instancia de
+Notepad a un archivo temporal controlado. Hasta recibir nuevo feedback UAT, el
+hito permanece `EN DESARROLLO`.

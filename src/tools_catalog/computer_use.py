@@ -163,8 +163,8 @@ def build_computer_use_tool_definitions():
             computer_use,
             tags=("semantic", "workflow", "computer_use"),
             capabilities=("computer_use.run", "automation.compose"),
-            risk_level=RiskLevel.USER_CONFIRM,
-            requires_confirmation=True,
+            risk_level=RiskLevel.SAFE,
+            requires_confirmation=False,
             timeout_seconds=120,
         ),
         tool(

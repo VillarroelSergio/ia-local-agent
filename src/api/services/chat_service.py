@@ -324,6 +324,22 @@ class AgentService:
             if control:
                 return f"Control encontrado: {control.get('name')} ({control.get('control_type')}). No se ha pulsado."
             return "No se encontro ese control mediante UI Automation. No se ha realizado ninguna accion."
+        if action.tool_name == "computer_use" and isinstance(result, dict):
+            status = result.get("status")
+            session_id = result.get("id")
+            if status == "waiting_confirmation":
+                pending = (result.get("state") or {}).get("pending_confirmation") or {}
+                description = pending.get("description") or "La siguiente accion modifica la ventana."
+                return (
+                    f"Sesion Computer Use {session_id} preparada. {description} "
+                    "Necesito tu confirmacion para continuar."
+                )
+            if status == "completed":
+                return f"Sesion Computer Use {session_id} completada y verificada."
+            error = result.get("error")
+            if status in {"failed", "aborted", "cancelled"}:
+                return f"La sesion Computer Use {session_id} termino como {status}: {error or 'sin detalle adicional'}."
+            return f"Sesion Computer Use {session_id} en estado {status or 'desconocido'}."
         return action.user_message
 
     async def _final_response_after_tools(self, request: ChatRequest, request_id: str, conversation_id: str, tool_results: list[dict[str, Any]]):

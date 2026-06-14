@@ -27,7 +27,9 @@ def test_computer_use_tools_are_registered():
     }
 
     assert expected.issubset(set(registry.names()))
-    assert registry.require("computer_use").metadata.requires_confirmation
+    orchestrator = registry.require("computer_use").metadata
+    assert orchestrator.requires_confirmation is False
+    assert orchestrator.risk_level.value == "safe"
     assert registry.require("observe_desktop").metadata.risk_level.value == "read_only"
 
 

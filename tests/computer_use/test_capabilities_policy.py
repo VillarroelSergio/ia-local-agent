@@ -57,6 +57,7 @@ def test_capability_registry_has_unique_semantic_names_and_risk_subset():
     assert all(is_high_risk(name) for name in HIGH_RISK_CAPABILITIES)
     assert not is_high_risk("extract_visible_text")
     assert not is_high_risk("unknown")
+    assert "open_application" in SEMANTIC_CAPABILITIES
 
 
 @pytest.mark.parametrize(

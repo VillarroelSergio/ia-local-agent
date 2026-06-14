@@ -25,6 +25,7 @@ CAPABILITIES: dict[str, Capability] = {
     item.name: item for item in (
         Capability("observe_desktop", "window.inspect"),
         Capability("observe_active_window", "window.inspect"),
+        Capability("open_application", "application.launch"),
         Capability("focus_window", "window.control", True, True),
         Capability("summarize_active_window", "window.inspect"),
         Capability("extract_visible_text", "window.inspect"),

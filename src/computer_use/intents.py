@@ -54,6 +54,20 @@ def detect_computer_use_intent(message: str) -> ComputerUseIntent | None:
             True,
         )
 
+    if (
+        any(app in text for app in ("notepad", "bloc de notas"))
+        and any(action in text for action in ("abre", "analiza", "observa", "escribe", "guardar", "pulsa"))
+        and (
+            ("abre" in text and "." in message)
+            or sum(action in text for action in ("abre", "analiza", "observa", "escribe", "guardar", "pulsa")) > 1
+        )
+    ):
+        return ComputerUseIntent(
+            "computer_use",
+            {"goal": message.strip(), "max_iterations": 3},
+            "Iniciando una sesion Computer Use para completar el objetivo en Notepad.",
+        )
+
     match = _WRITE_TEXT.match(text) or _EMBEDDED_WRITE_TEXT.search(text)
     if match:
         return ComputerUseIntent(

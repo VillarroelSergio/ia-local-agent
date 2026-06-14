@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 try:
     from computer_use.models import DesktopObservation, PlanStep
 except ModuleNotFoundError:
@@ -29,6 +31,11 @@ class ResultVerifier:
         if not goal.strip():
             return {"ok": False, "reason": "Objetivo vacio."}
         normalized = goal.lower()
+        if any(token in normalized for token in ("escribe", "introduce")):
+            match = re.search(r"[\"'](?P<text>.+?)[\"']", goal)
+            if not match:
+                return {"ok": False, "reason": "No se pudo identificar el texto esperado."}
+            return self.verify_text(observation, match.group("text"))
         if any(token in normalized for token in ("texto", "leer", "extract")):
             return {
                 "ok": bool(observation.visible_text.strip()),

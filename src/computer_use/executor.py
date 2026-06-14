@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import asdict
 
 try:
@@ -9,6 +10,7 @@ try:
     from computer_use.models import Plan, PlanStep
     from computer_use.observer.uia import UIAutomationService
     from os_integration.automation import WorkflowRunner
+    from os_integration.apps import ApplicationManager
     from os_integration.models import AutomationStep, AutomationWorkflow
     from os_integration.security import OSScope, OSSecurityPolicy
 except ModuleNotFoundError:
@@ -16,6 +18,7 @@ except ModuleNotFoundError:
     from src.computer_use.models import Plan, PlanStep
     from src.computer_use.observer.uia import UIAutomationService
     from src.os_integration.automation import WorkflowRunner
+    from src.os_integration.apps import ApplicationManager
     from src.os_integration.models import AutomationStep, AutomationWorkflow
     from src.os_integration.security import OSScope, OSSecurityPolicy
 
@@ -28,11 +31,13 @@ class ComputerUseExecutor:
         security: OSSecurityPolicy | None = None,
         confirmations: ConfirmationStore | None = None,
         ui_automation: UIAutomationService | None = None,
+        application_manager: ApplicationManager | None = None,
     ):
         self.workflow_runner = workflow_runner
         self.security = security or workflow_runner.engine.security
         self.confirmations = confirmations or ConfirmationStore()
         self.ui_automation = ui_automation or UIAutomationService()
+        self.application_manager = application_manager or ApplicationManager()
 
     async def execute_plan(self, plan: Plan, *, session_id: str, confirmation_tokens: dict[str, str] | None = None) -> dict:
         results = []
@@ -61,6 +66,8 @@ class ComputerUseExecutor:
             return {"ok": False, "step_id": step.id, "error": decision["reason"], "policy": decision}
         if step.capability in {"click_ui_control", "fill_text_field"}:
             return self._execute_uia_step(step, decision)
+        if step.capability == "open_application":
+            return await self._open_application(step, decision)
         workflow = self._workflow_for_step(step)
         if workflow is None:
             return {
@@ -78,6 +85,54 @@ class ComputerUseExecutor:
             "step_id": step.id,
             "workflow_id": workflow.id,
             "results": [asdict(result) for result in results],
+            "policy": decision,
+        }
+
+    async def _open_application(self, step: PlanStep, decision: dict) -> dict:
+        app_name = str(step.args.get("app_name") or "").strip()
+        if not app_name:
+            return {"ok": False, "step_id": step.id, "error": "Falta app_name.", "policy": decision}
+        before = {
+            (window.handle, window.pid)
+            for window in self.workflow_runner.engine.window_manager.list_windows(limit=300)
+        }
+        launch = self.application_manager.launch(app_name)
+        if not launch.opened:
+            return {"ok": False, "step_id": step.id, "error": launch.error, "policy": decision}
+        for _ in range(20):
+            await asyncio.sleep(0.1)
+            candidates = [
+                window
+                for window in self.workflow_runner.engine.window_manager.find_windows(app_name, limit=10)
+                if (window.handle, window.pid) not in before
+            ]
+            if len(candidates) == 1:
+                window = candidates[0]
+                return {
+                    "ok": True,
+                    "step_id": step.id,
+                    "result": {
+                        "opened": True,
+                        "window": {
+                            "handle": window.handle,
+                            "pid": window.pid,
+                            "title": window.title,
+                            "process_name": window.process_name,
+                        },
+                    },
+                    "policy": decision,
+                }
+            if len(candidates) > 1:
+                return {
+                    "ok": False,
+                    "step_id": step.id,
+                    "error": "La apertura creo varias ventanas y no puede identificarse una de forma segura.",
+                    "policy": decision,
+                }
+        return {
+            "ok": False,
+            "step_id": step.id,
+            "error": "La aplicacion se inicio, pero no se encontro una ventana nueva verificable.",
             "policy": decision,
         }
 

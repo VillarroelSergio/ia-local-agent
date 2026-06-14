@@ -28,7 +28,7 @@ def test_user_uat_prompts_do_not_fall_through_to_chat_or_app_name_parser():
             "Abre Notepad con un documento nuevo y vacio. Cuando este listo, "
             "analiza su ventana sin usar OCR y dime que aplicacion y controles "
             "accesibles detectas."
-        ): "observe_window",
+        ): "computer_use",
         (
             "En el documento nuevo de Notepad, escribe 'Computer Use UAT OK' "
             "en el documento."
@@ -39,3 +39,17 @@ def test_user_uat_prompts_do_not_fall_through_to_chat_or_app_name_parser():
         intent = detect_computer_use_intent(prompt)
         assert intent is not None
         assert intent.tool_name == tool_name
+
+
+def test_compound_notepad_goal_routes_to_computer_use_session():
+    prompt = (
+        "Abre Notepad con un documento nuevo y vacio. Cuando este listo, "
+        "analiza su ventana sin usar OCR."
+    )
+
+    intent = detect_computer_use_intent(prompt)
+
+    assert intent is not None
+    assert intent.tool_name == "computer_use"
+    assert intent.arguments["goal"] == prompt
+    assert intent.requires_confirmation is False

@@ -24,6 +24,7 @@ class ComputerUseService:
         self.engine = engine or ComputerUseEngine(session_store=ComputerUseSessionStore(store_path))
         self.events = events
         self._background: dict[str, asyncio.Task] = {}
+        self._pending_arguments: dict[str, dict[str, Any]] = {}
         self.engine.runtime.event_bus.subscribe(None, self._forward_event)
 
     async def _ensure_runtime(self) -> None:
@@ -104,6 +105,7 @@ class ComputerUseService:
                 "capability": capability, "description": f"Ejecutar {capability}",
                 "risk_level": "high", "arguments": _redact(arguments), "source": "capability",
             }
+            self._pending_arguments[session.id] = dict(arguments)
         elif result["ok"]:
             session.transition(ComputerUseStatus.RUNNING)
             session.transition(ComputerUseStatus.COMPLETED)
@@ -122,12 +124,16 @@ class ComputerUseService:
         if session.status != ComputerUseStatus.WAITING_CONFIRMATION or not capability:
             raise ValueError("La sesion no tiene una confirmacion pendiente.")
         if not approved:
+            self._pending_arguments.pop(session_id, None)
             self.engine.cancel(session_id)
             return {"approved": False, "session_id": session_id, "session": self.get_session(session_id)}
         if pending.get("source") == "capability":
+            arguments = self._pending_arguments.pop(session_id, None)
+            if arguments is None:
+                raise ValueError("Los argumentos de confirmacion expiraron; repite la solicitud.")
             result = await self.execute_capability(
                 capability,
-                pending.get("arguments", {}),
+                arguments,
                 session_id=session_id,
                 approved=True,
             )
@@ -179,6 +185,8 @@ def _safe_summary(event_type: str, data: dict[str, Any]) -> str:
 
 def _redact(arguments: dict[str, Any]) -> dict[str, Any]:
     return {
-        key: "[redacted]" if any(word in key.lower() for word in ("password", "secret", "token")) else value
+        key: "[redacted]"
+        if any(word in key.lower() for word in ("password", "secret", "token", "text", "content", "value"))
+        else value
         for key, value in arguments.items()
     }

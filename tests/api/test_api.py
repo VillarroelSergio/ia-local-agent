@@ -385,6 +385,28 @@ def test_computer_use_mvp_contract_and_high_risk_confirmation(monkeypatch, tmp_p
     assert high.status_code == 200
     assert high.json()["session"]["status"] == "waiting_confirmation"
 
+    click = client.post(
+        "/api/computer-use/execute-capability",
+        headers=headers(),
+        json={"capability": "click_ui_control", "arguments": {"name": "Guardar"}},
+    )
+    assert click.status_code == 200
+    assert click.json()["session"]["status"] == "waiting_confirmation"
+    assert click.json()["result"]["policy"]["requires_confirmation"] is True
+
+    write = client.post(
+        "/api/computer-use/execute-capability",
+        headers=headers(),
+        json={
+            "capability": "fill_text_field",
+            "arguments": {"name": "documento", "text": "private test value"},
+        },
+    )
+    assert write.status_code == 200
+    pending = write.json()["session"]["state"]["pending_confirmation"]["arguments"]
+    assert pending["text"] == "[redacted]"
+    assert "private test value" not in str(write.json())
+
 
 def test_active_window_metadata(monkeypatch, tmp_path):
     client = build_client(monkeypatch, tmp_path)

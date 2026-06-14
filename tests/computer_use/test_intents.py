@@ -8,6 +8,8 @@ def test_uat_prompts_route_to_computer_use():
         "Busca el boton Guardar, pero no lo pulses.": ("find_ui_control", False),
         "Organiza mis ventanas.": ("tile_windows_layout", True),
         "Lee todo el contenido de la ventana activa.": ("observe_window", False),
+        "Escribe 'Computer Use UAT OK' en el documento.": ("fill_text_field", True),
+        "Pulsa Guardar.": ("click_ui_control", True),
     }
 
     for prompt, expected in cases.items():

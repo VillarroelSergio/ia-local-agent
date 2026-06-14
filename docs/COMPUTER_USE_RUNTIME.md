@@ -182,7 +182,24 @@ Guarda observaciones y acciones como JSON. No guarda imagenes ni screenshots per
 
 - Anadir streaming/progreso en vivo de sesiones Computer Use al panel Tauri.
 - Persistir y exponer un timeline de eventos por sesion.
-- Implementar `UIAutomationService.invoke_control` con `uiautomation`.
-- Implementar `UIAutomationService.set_text` con bloqueo de password fields.
+- Fijar el HWND/PID objetivo en Tauri antes de mostrar confirmaciones.
+- Validar `invoke_control` y `set_text` en una aplicacion aislada.
 - Anadir tests de seguridad para controles sensibles.
 - Anadir tests e2e para events `computer_use.*`.
+
+## Acciones UIA Implementadas
+
+`UIAutomationService` soporta:
+
+- Busqueda por nombre, tipo, automation id, clase y aliases espanol/ingles.
+- Referencias de control ligadas a HWND, PID, titulo y path UIA.
+- Re-resolucion y validacion de foco/identidad antes de actuar.
+- `Invoke`, `Select`, `Toggle` y click semantico como fallback.
+- `ValuePattern.SetValue` y `SendKeys` controlado como fallback.
+- Bloqueo de controles y ventanas sensibles.
+- Apertura bajo demanda de `File/Archivo` para localizar `Save/Guardar`, solo
+  despues de confirmacion.
+- Verificacion posterior de escritura sin devolver el texto en el resultado.
+
+Limitacion: falta fijar/restaurar de forma segura la ventana objetivo cuando
+la confirmacion se resuelve desde la app Tauri.

@@ -19,6 +19,8 @@ def test_computer_use_tools_are_registered():
         "observe_desktop",
         "observe_window",
         "find_ui_control",
+        "click_ui_control",
+        "fill_text_field",
         "execute_workflow",
         "analyze_application",
         "automate_application",

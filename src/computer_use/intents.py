@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
 
 
@@ -16,14 +17,24 @@ class ComputerUseIntent:
 
 _FIND_CONTROL = re.compile(
     r"^(?:busca|buscar|encuentra|localiza)\s+(?:el|la|un|una)?\s*"
-    r"(?:boton|botón|control|campo|menu|menú)?\s*(?P<name>.+?)"
+    r"(?:boton|control|campo|menu)?\s*(?P<name>.+?)"
     r"(?:\s+en\s+la\s+ventana\s+activa)?(?:,\s*pero\s+no\s+lo\s+pulses)?[.\s]*$",
+    re.IGNORECASE,
+)
+_WRITE_TEXT = re.compile(
+    r"^(?:escribe|escribir|introduce|introducir)\s+[\"']?(?P<text>.+?)[\"']?\s+"
+    r"(?:en|dentro de)\s+(?:el|la)?\s*(?P<name>documento|editor|campo|texto).*$",
+    re.IGNORECASE,
+)
+_CLICK_CONTROL = re.compile(
+    r"^(?:pulsa|pulsar|haz clic en|presiona)\s+(?:el|la)?\s*"
+    r"(?:boton|control|menu)?\s*(?P<name>.+?)[.\s]*$",
     re.IGNORECASE,
 )
 
 
 def detect_computer_use_intent(message: str) -> ComputerUseIntent | None:
-    text = " ".join((message or "").strip().lower().split())
+    text = _normalize(" ".join((message or "").strip().lower().split()))
     if not text:
         return None
 
@@ -38,8 +49,26 @@ def detect_computer_use_intent(message: str) -> ComputerUseIntent | None:
             True,
         )
 
+    match = _WRITE_TEXT.match(text)
+    if match:
+        return ComputerUseIntent(
+            "fill_text_field",
+            {"name": match.group("name").strip(), "text": match.group("text").strip(" \"'")},
+            "Necesito tu confirmacion antes de escribir en la ventana activa.",
+            True,
+        )
+
+    match = _CLICK_CONTROL.match(text)
+    if match:
+        return ComputerUseIntent(
+            "click_ui_control",
+            {"name": match.group("name").strip(" .")},
+            "Necesito tu confirmacion antes de invocar ese control.",
+            True,
+        )
+
     match = _FIND_CONTROL.match(text)
-    if match and any(word in text for word in ("boton", "botón", "control", "campo", "menu", "menú")):
+    if match and any(word in text for word in ("boton", "control", "campo", "menu")):
         name = re.sub(r"\s*,?\s*pero\s+no\s+lo\s+pulses.*$", "", match.group("name"), flags=re.IGNORECASE)
         return ComputerUseIntent(
             "find_ui_control",
@@ -68,3 +97,8 @@ def detect_computer_use_intent(message: str) -> ComputerUseIntent | None:
         )
 
     return None
+
+
+def _normalize(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value)
+    return "".join(char for char in normalized if not unicodedata.combining(char))

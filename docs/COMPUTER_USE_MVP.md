@@ -63,10 +63,23 @@ Invoke-RestMethod -Method Post `
   -Headers $headers
 ```
 
+## Acciones UIA
+
+Tools confirmadas disponibles:
+
+- `click_ui_control`
+- `fill_text_field`
+
+Ambas validan HWND, PID, titulo, foco e identidad del control inmediatamente
+antes de actuar. La escritura se verifica releyendo `ValuePattern`. Los textos
+pendientes de confirmacion no se persisten en SQLite ni eventos.
+
 ## Limitaciones
 
 - UIA depende del soporte de accesibilidad de cada aplicacion.
 - Electron, canvas, juegos y ventanas minimizadas pueden no exponer controles.
-- Click y escritura UIA reales necesitan adaptadores especificos.
+- Click y escritura UIA estan implementados, pero pendientes de UAT aislado.
+- Confirmar desde Tauri puede cambiar el foco; la accion se cancela si la
+  ventana objetivo no permanece activa.
 - VisionProvider sigue siendo futuro.
 - DPI y multi-monitor requieren validacion manual.

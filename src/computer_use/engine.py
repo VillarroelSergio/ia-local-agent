@@ -57,6 +57,7 @@ class ComputerUseEngine:
             self.runtime.workflow_runner,
             security=self.runtime.security,
             confirmations=self.confirmations,
+            ui_automation=self.observer.ui_automation,
         )
         self.session_store = session_store or ComputerUseSessionStore(Path(PROJECT_ROOT) / "data" / "computer_use.sqlite3")
         self.max_iterations = max_iterations

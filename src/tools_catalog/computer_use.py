@@ -46,6 +46,14 @@ class FindUIControlInput(BaseModel):
     window_handle: int | None = Field(default=None, ge=1)
 
 
+class InvokeUIControlInput(FindUIControlInput):
+    pass
+
+
+class SetUITextInput(FindUIControlInput):
+    text: str = Field(min_length=1, max_length=4000)
+
+
 class AnalyzeApplicationInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -86,6 +94,19 @@ def find_ui_control(args: FindUIControlInput, ctx: ToolContext):
     service = UIAutomationService()
     control = service.find_control_by_name(args.name, window_handle=args.window_handle)
     return {"control": asdict(control) if control else None, "uia_available": service.available}
+
+
+def invoke_ui_control(args: InvokeUIControlInput, ctx: ToolContext):
+    service = UIAutomationService()
+    return service.invoke_named_control(args.name, window_handle=args.window_handle)
+
+
+def set_ui_text(args: SetUITextInput, ctx: ToolContext):
+    service = UIAutomationService()
+    controls = service.find_inputs(window_handle=args.window_handle, query=args.name)
+    if not controls:
+        raise ValueError("Campo UIA no encontrado.")
+    return service.set_text(controls[0], args.text)
 
 
 async def execute_workflow(args: ExecuteWorkflowInput, ctx: ToolContext):
@@ -172,6 +193,26 @@ def build_computer_use_tool_definitions():
             tags=("read_only", "computer_use", "uia"),
             capabilities=("ui_automation.find_control",),
             risk_level=RiskLevel.READ_ONLY,
+        ),
+        tool(
+            "click_ui_control",
+            "Invoca un control UIA por nombre tras verificar ventana, foco e identidad.",
+            InvokeUIControlInput,
+            invoke_ui_control,
+            tags=("computer_use", "uia", "semantic"),
+            capabilities=("ui_automation.invoke",),
+            risk_level=RiskLevel.USER_CONFIRM,
+            requires_confirmation=True,
+        ),
+        tool(
+            "fill_text_field",
+            "Escribe texto en un campo UIA no sensible tras verificar ventana, foco e identidad.",
+            SetUITextInput,
+            set_ui_text,
+            tags=("computer_use", "uia", "semantic"),
+            capabilities=("ui_automation.set_text",),
+            risk_level=RiskLevel.USER_CONFIRM,
+            requires_confirmation=True,
         ),
         tool(
             "execute_workflow",

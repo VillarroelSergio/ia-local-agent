@@ -66,6 +66,8 @@ def test_capability_registry_has_unique_semantic_names_and_risk_subset():
         ("organize_windows", OSScope.WINDOW_CONTROL),
         ("extract_visible_text", OSScope.WINDOW_INSPECT),
         ("run_safe_workflow", OSScope.WINDOW_INSPECT),
+        ("click_ui_control", OSScope.MOUSE_INPUT),
+        ("fill_text_field", OSScope.KEYBOARD_INPUT),
     ],
 )
 def test_executor_maps_capabilities_to_policy_scope(capability, expected_scope):
@@ -156,6 +158,27 @@ def test_execute_plan_stops_after_first_failed_step():
     assert result["ok"] is False
     assert len(result["results"]) == 1
     assert len(runner.workflows) == 1
+
+
+def test_uia_action_requires_confirmation_before_adapter_call():
+    runner = FakeRunner()
+    service = SimpleNamespace(
+        find_controls=lambda **kwargs: (_ for _ in ()).throw(AssertionError("adapter called")),
+    )
+    executor = ComputerUseExecutor(
+        runner,
+        security=FakeSecurity(OSDecision(True, "allowed")),
+        confirmations=ConfirmationStore(),
+        ui_automation=service,
+    )
+
+    result = asyncio.run(executor.execute_step(
+        PlanStep("click_ui_control", "click", args={"name": "Guardar"}),
+        session_id="session-1",
+    ))
+
+    assert result["ok"] is False
+    assert result["error"] == "computer_use_confirmation_required"
 
 
 def test_confirmation_grant_is_bound_to_session_capability_and_single_use():

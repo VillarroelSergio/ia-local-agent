@@ -74,6 +74,10 @@ Ambas validan HWND, PID, titulo, foco e identidad del control inmediatamente
 antes de actuar. La escritura se verifica releyendo `ValuePattern`. Los textos
 pendientes de confirmacion no se persisten en SQLite ni eventos.
 
+Plan manual vigente:
+
+- [`uat/COMPUTER_USE_MANUAL_UAT.md`](uat/COMPUTER_USE_MANUAL_UAT.md)
+
 ## Limitaciones
 
 - UIA depende del soporte de accesibilidad de cada aplicacion.

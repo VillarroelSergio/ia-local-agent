@@ -81,6 +81,7 @@ Flujos manuales:
 Para casos que dependan de foco, ventanas, DPI, UI Automation, confirmaciones
 o efectos visibles, usar:
 
+- `docs/uat/COMPUTER_USE_MANUAL_UAT.md` para el plan vigente de Computer Use.
 - `.agents/user-acceptance-test-agent.md` para disenar los casos.
 - `.agents/desktop-uat-agent.md` para adaptar el plan al entorno Windows.
 - `.agents/task-templates/desktop-uat.md` para entregar casos y recoger feedback.

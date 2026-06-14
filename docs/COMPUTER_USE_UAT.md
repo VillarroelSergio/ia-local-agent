@@ -1,5 +1,9 @@
 # Computer Use MVP - UAT
 
+> Este documento conserva la primera ejecucion historica. El plan manual
+> vigente para introducir nuevo feedback esta en
+> [`uat/COMPUTER_USE_MANUAL_UAT.md`](uat/COMPUTER_USE_MANUAL_UAT.md).
+
 ## Precondiciones
 
 - Backend y app desktop arrancados.

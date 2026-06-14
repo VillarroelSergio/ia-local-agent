@@ -141,6 +141,8 @@ SEMANTIC_EMBEDDING_PROVIDER=local_hash
 
 ## Documentos Clave
 
+- `docs/reference/IA_LOCAL_WINDOWS.md`: vision, roadmap conceptual y recursos importados desde Notion.
+- `docs/reference/IA_LOCAL_WINDOWS.pdf`: exportacion original con el diagrama de arquitectura/roadmap.
 - `README.md`: estado, roadmap, arranque rapido y tareas recomendadas.
 - `docs/api.md`: contrato API, auth, chat, WebSocket, seguridad.
 - `docs/DESKTOP_APP_MVP.md`: arquitectura de desktop app y endpoints usados.
@@ -154,6 +156,13 @@ SEMANTIC_EMBEDDING_PROVIDER=local_hash
 Usa estos perfiles para revisar, planificar o implementar cambios por area:
 
 - `.agents/README.md`
+- `.agents/ceo-agent.md`
+- `.agents/planner-agent.md`
+- `.agents/head-of-engineering-agent.md`
+- `.agents/designer-agent.md`
+- `.agents/builder-agent.md`
+- `.agents/bug-agent.md`
+- `.agents/testing-agent.md`
 - `.agents/backend-api-agent.md`
 - `.agents/frontend-tauri-agent.md`
 - `.agents/windows-overlay-agent.md`
@@ -164,6 +173,12 @@ Usa estos perfiles para revisar, planificar o implementar cambios por area:
 - `.agents/product-planning-agent.md`
 
 Cada perfil incluye foco, archivos a leer, tareas tipicas, validaciones y limites. Para tareas grandes, combina agentes: por ejemplo overlay + frontend + QA, o RAG + backend + QA.
+
+Los siete agentes transversales dirigen el trabajo; los agentes especializados
+aportan conocimiento de dominio. No es obligatorio usar las siete capas en
+tareas pequenas. En iniciativas ambiguas o transversales, la ruta por defecto
+es `CEO -> Planificador -> Jefe de Ingenieria -> Diseñador/Constructor ->
+Bugs/Testeo`, sumando los especialistas necesarios.
 
 Plantillas y playbooks:
 

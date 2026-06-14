@@ -1,87 +1,78 @@
-# Desktop UAT Execution Template
+# Manual Desktop UAT Template
 
 ## Objetivo
 
-Ejecutar en la aplicacion Windows un plan de casos de uso mediante prompts y
-comprobar resultados visibles, confirmaciones, efectos y seguridad.
+Preparar casos para que el usuario los ejecute manualmente en la aplicacion
+Windows y devuelva feedback observable.
 
-## Agentes
+## Roles
 
-- Gate: `testing-agent.md`
 - Diseno de casos: `user-acceptance-test-agent.md`
-- Ejecucion: `desktop-uat-agent.md`
+- Adaptacion desktop: `desktop-uat-agent.md`
+- Ejecucion y evidencia: usuario
+- Gate: `testing-agent.md`
 - Diagnostico: `bug-agent.md`
-- Automatizacion de regresion: `qa-test-agent.md`
+- Regresion automatizada: `qa-test-agent.md`
 
-## Entorno
+## Version A Probar
 
-- Fecha:
 - Rama:
 - Commit:
-- Tipo de app: Tauri dev / build / instalador
+- Build/version:
+- Area:
+- Objetivo:
+
+## Precondiciones Para El Usuario
+
 - Backend:
-- LM Studio:
-- Modelo:
-- Windows:
-- Escala DPI:
-- Monitores:
+- LM Studio/modelo:
+- App desktop:
 - Aplicacion objetivo:
-- PID/titulo esperado:
-- Identificador de documento temporal:
-- Ruta de evidencias:
+- Datos sinteticos:
+- Preparacion de ventanas:
+- Como restaurar el estado:
 
-## Preflight
+## Casos Manuales
 
-- [ ] Working tree y commit registrados.
-- [ ] API `/api/health` responde.
-- [ ] LM Studio responde o el caso espera su ausencia.
-- [ ] App desktop abierta y conectada.
-- [ ] Datos de prueba sinteticos preparados.
-- [ ] PID, titulo y documento objetivo son unicos y verificables.
-- [ ] La aplicacion no ha reutilizado una ventana o documento del usuario.
-- [ ] No hay ventanas sensibles abiertas.
-- [ ] Se conoce como restaurar el estado tras cada caso.
-
-## Casos
-
-| ID | Prompt exacto | Aplicacion/contexto | Confirmacion esperada | Resultado visible esperado | Estado |
+| ID | Preparacion | Prompt exacto | Confirmacion esperada | Resultado visible esperado | No debe ocurrir |
 | --- | --- | --- | --- | --- | --- |
-| UAT-01 |  |  |  |  | NOT_RUN |
-
-## Registro Por Caso
-
-```text
-Caso:
-Inicio/fin:
-Prompt exacto:
-Estado inicial:
-Acciones observadas:
-Confirmacion mostrada:
-Decision de confirmacion:
-Resultado visible:
-Verificacion posterior:
-Timeline/eventos:
-Evidencia:
-Resultado: PASS / FAIL / BLOCKED / NEEDS_INFO / NOT_RUN
-Notas:
-```
+| UAT-01 |  |  |  |  |  |
 
 ## Seguridad
 
-| ID | Superficie | Accion solicitada | Bloqueo esperado | Resultado |
+| ID | Escenario simulado | Prompt | Bloqueo esperado | Evidencia necesaria |
 | --- | --- | --- | --- | --- |
-| SEC-01 | Ventana sensible simulada | Lectura/accion | Sin titulo, OCR ni contenido | NOT_RUN |
+| SEC-01 |  |  |  |  |
 
-## Resumen
+## Feedback Del Usuario
 
 ```text
-PASS:
-FAIL:
-BLOCKED:
-NEEDS_INFO:
-NOT_RUN:
-Decision del gate:
-Fallos enviados a:
-Regresiones automatizadas creadas:
-Riesgos residuales:
+Caso:
+Resultado: PASS / FAIL / BLOCKED / NEEDS_INFO
+Que ocurrio:
+Respuesta visible:
+Confirmacion mostrada:
+Efecto observado:
+Evidencia:
+Notas:
 ```
+
+## Analisis Posterior Del Agente
+
+```text
+Resumen:
+- PASS:
+- FAIL:
+- BLOCKED:
+- NEEDS_INFO:
+
+Fallo:
+- Caso:
+- Sintoma:
+- Evidencia del usuario:
+- Agente corrector:
+- Hipotesis:
+- Regresion automatizada:
+- Casos a repetir:
+```
+

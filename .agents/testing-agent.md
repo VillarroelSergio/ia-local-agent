@@ -28,7 +28,7 @@ aceptacion, no rompe flujos existentes y falla de manera segura.
 - `testing-agent.md` dirige la estrategia transversal y el gate de aceptacion.
 - `qa-test-agent.md` mantiene y ejecuta suites tecnicas.
 - `user-acceptance-test-agent.md` prepara validacion conversacional real.
-- `desktop-uat-agent.md` ejecuta esos casos sobre la aplicacion Windows.
+- `desktop-uat-agent.md` adapta esos casos para ejecucion manual del usuario.
 
 ## Entregable
 
@@ -51,6 +51,6 @@ Decision: PASS / FAIL / BLOCKED
 
 ## Handoff
 
-Devuelve fallos reproducibles al `bug-agent.md`. Para validacion real por el
-usuario, activa `user-acceptance-test-agent.md`. Para ejecucion asistida sobre
-el escritorio Windows, activa `desktop-uat-agent.md`.
+Devuelve fallos reproducibles al `bug-agent.md`. Para validacion real, activa
+`user-acceptance-test-agent.md` y `desktop-uat-agent.md`; el usuario ejecuta
+los casos y devuelve el feedback.

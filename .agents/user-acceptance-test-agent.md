@@ -21,7 +21,7 @@ https://github.com/VillarroelSergio/ia-local-agent.git
 - `README.md`
 - Documentacion del area cambiada
 - Tests automatizados existentes del area cambiada
-- `.agents/desktop-uat-agent.md` cuando los casos deban ejecutarse por agente
+- `.agents/desktop-uat-agent.md` para adaptar casos a pruebas desktop manuales
 
 ## Cuando Usarlo
 
@@ -50,8 +50,9 @@ https://github.com/VillarroelSergio/ia-local-agent.git
   - Build/release: `build-release-agent.md`
   - Tests automatizados: `qa-test-agent.md`
 - Mantener trazabilidad de decisiones y resultados.
-- Entregar el plan a `desktop-uat-agent.md` cuando exista acceso de Computer
-  Use al escritorio; si no, entregarlo al usuario sin simular ejecucion.
+- Entregar siempre el plan al usuario para ejecucion manual.
+- No abrir aplicaciones, escribir prompts ni resolver confirmaciones como
+  sustituto del usuario.
 
 ## Formato De Plan De Pruebas Por Prompt
 
@@ -137,8 +138,8 @@ Fallo 1:
 
 El usuario recibe una lista clara de pruebas ejecutables y, tras devolver resultados, cada fallo queda asignado a un agente corrector con evidencia suficiente para actuar.
 
-Si los casos los ejecuta `desktop-uat-agent.md`, este agente conserva la
-responsabilidad sobre la calidad de los prompts y criterios esperados.
+`desktop-uat-agent.md` puede adaptar el plan al entorno Windows, pero el usuario
+es siempre quien ejecuta los casos y entrega el feedback.
 
 ## Regla Principal
 

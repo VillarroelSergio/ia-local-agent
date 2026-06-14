@@ -140,6 +140,9 @@ SEMANTIC_EMBEDDING_PROVIDER=local_hash
 - Preferir capacidades semanticas (`focus_window`, `extract_visible_text`) frente a primitivas crudas (`click`, `type_text`).
 - Mantener errores visibles y seguros: utiles para usuario, sin stack traces en UI.
 - Antes de tocar Windows runtime, revisar seguridad, DPI, multi-monitor, UAC y ventanas sensibles.
+- Las pruebas de aceptacion son manuales: los agentes disenan los casos y
+  analizan el feedback, pero no abren aplicaciones ni ejecutan prompts UAT en
+  nombre del usuario.
 
 ## Documentos Clave
 

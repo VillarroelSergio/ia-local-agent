@@ -23,7 +23,7 @@ Usa siempre archivos, scripts y tests del workspace actual como fuente de verdad
 | Implementar una tarea ya definida | `builder-agent.md` | Agente especialista, `testing-agent.md` |
 | Reproducir y corregir un defecto | `bug-agent.md` | Agente especialista, `testing-agent.md` |
 | Dirigir aceptacion y estrategia transversal de pruebas | `testing-agent.md` | `qa-test-agent.md`, `user-acceptance-test-agent.md` |
-| Ejecutar casos reales sobre la app Windows | `desktop-uat-agent.md` | `testing-agent.md`, `user-acceptance-test-agent.md`, `bug-agent.md` |
+| Disenar casos manuales para la app Windows | `desktop-uat-agent.md` | `testing-agent.md`, `user-acceptance-test-agent.md`, `bug-agent.md` |
 | Cambiar chat, API, settings, tools o providers | `backend-api-agent.md` | `qa-test-agent.md` |
 | Tocar React, servicios frontend, settings UI o paneles | `frontend-tauri-agent.md` | `backend-api-agent.md`, `qa-test-agent.md` |
 | Mejorar overlay, OCR, ventanas, hotkeys o workflows Windows | `windows-overlay-agent.md` | `frontend-tauri-agent.md`, `qa-test-agent.md` |
@@ -48,7 +48,7 @@ Usa siempre archivos, scripts y tests del workspace actual como fuente de verdad
 | Mejora de overlay | `windows-overlay` -> `frontend-tauri` -> `qa-test` |
 | Release | `build-release` -> `qa-test` -> `build-release` |
 | Validacion conversacional de usuario | `user-acceptance-test` -> usuario escribe prompts -> agente corrector -> `qa-test` |
-| UAT desktop ejecutado por agente | `user-acceptance-test` -> `desktop-uat` -> `testing` -> `bug`/especialista -> `qa-test` |
+| UAT desktop manual | `user-acceptance-test` -> `desktop-uat` -> usuario ejecuta -> agente analiza -> `bug`/especialista -> `qa-test` |
 
 ## Plantillas
 
@@ -61,7 +61,7 @@ Usa `.agents/task-templates/` para arrancar tareas de forma consistente:
 - `overlay-change.md`: ventana flotante, OCR, hotkeys y contexto Windows.
 - `rag-change.md`: ingestion, retrieval, memoria y fuentes.
 - `user-acceptance-test.md`: pruebas por prompt para usuario y reporte de resultados.
-- `desktop-uat.md`: ejecucion real en la app Windows con evidencia.
+- `desktop-uat.md`: plan manual y formato de feedback del usuario.
 
 ## Reglas Cortas
 
@@ -86,7 +86,7 @@ Los agentes nuevos no reemplazan a los especialistas existentes:
 - Ejecucion: `builder-agent.md`.
 - Diagnostico: `bug-agent.md`.
 - Aceptacion: `testing-agent.md`.
-- Ejecucion UAT Windows: `desktop-uat-agent.md`.
+- Diseno UAT Windows: `desktop-uat-agent.md`.
 - Especialistas: backend, frontend/Tauri, Windows, RAG, build y QA/UAT.
 
 Para tareas pequenas se puede omitir una capa si no aporta una decision real.

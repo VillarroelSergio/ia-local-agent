@@ -82,10 +82,10 @@ Para casos que dependan de foco, ventanas, DPI, UI Automation, confirmaciones
 o efectos visibles, usar:
 
 - `.agents/user-acceptance-test-agent.md` para disenar los casos.
-- `.agents/desktop-uat-agent.md` para ejecutarlos en la app Windows.
-- `.agents/task-templates/desktop-uat.md` para registrar entorno y evidencia.
+- `.agents/desktop-uat-agent.md` para adaptar el plan al entorno Windows.
+- `.agents/task-templates/desktop-uat.md` para entregar casos y recoger feedback.
 - `.agents/testing-agent.md` para decidir el gate.
 
 Una respuesta API o una suite con mocks no sustituye el resultado visible del
-caso desktop. Si no existe acceso al escritorio, clasificarlo como `BLOCKED` o
-`NOT_RUN`.
+caso desktop. Los agentes no ejecutan UAT: el usuario realiza los pasos
+manualmente y devuelve resultados `PASS`, `FAIL`, `BLOCKED` o `NEEDS_INFO`.

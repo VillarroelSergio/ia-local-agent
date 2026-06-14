@@ -50,14 +50,16 @@ Puede:
 
 1. Registrar rama, commit, fecha, modelo, DPI y monitores.
 2. Comprobar precondiciones sin modificar datos del usuario.
-3. Preparar una aplicacion objetivo con contenido no sensible.
-4. Ejecutar exactamente el prompt definido en el plan.
-5. No ayudar manualmente al agente salvo que el caso lo indique.
-6. Resolver confirmaciones segun el resultado esperado.
-7. Comprobar el efecto visible y, si aplica, la verificacion posterior.
-8. Guardar solo evidencia sanitizada dentro de la ruta indicada por el plan.
-9. Clasificar el caso y restaurar el estado de prueba.
-10. Enrutar fallos reproducibles a `bug-agent.md`.
+3. Preparar una aplicacion objetivo aislada con contenido no sensible.
+4. Verificar PID, titulo, identidad del documento y que la ventana no existia
+   antes de escribir o interactuar.
+5. Ejecutar exactamente el prompt definido en el plan.
+6. No ayudar manualmente al agente salvo que el caso lo indique.
+7. Resolver confirmaciones segun el resultado esperado.
+8. Comprobar el efecto visible y, si aplica, la verificacion posterior.
+9. Guardar solo evidencia sanitizada dentro de la ruta indicada por el plan.
+10. Clasificar el caso y restaurar el estado de prueba.
+11. Enrutar fallos reproducibles a `bug-agent.md`.
 
 ## Clasificacion
 
@@ -96,10 +98,13 @@ correcto tampoco basta si el criterio depende de una ventana real.
 - Detener el caso si cambia el foco a una aplicacion no prevista.
 - No persistir screenshots u OCR sensibles.
 - No cerrar procesos o sobrescribir archivos del usuario.
+- No seleccionar una ventana solo por clase o por ser la primera coincidencia.
+- Abortar si la aplicacion reutiliza una instancia o documento preexistente.
 
 ## Entorno Base Recomendado
 
-- Aplicacion objetivo: Notepad con un archivo temporal no sensible.
+- Aplicacion objetivo: Notepad con un archivo temporal unico y titulo
+  verificable.
 - Desktop: app Tauri en modo desarrollo o build indicado por el plan.
 - Backend: `127.0.0.1:8765`.
 - Provider: LM Studio en `127.0.0.1:1234/v1`.
@@ -117,4 +122,3 @@ correcto tampoco basta si el criterio depende de una ventana real.
 
 Cada caso tiene resultado, evidencia y entorno reproducible. Los casos no
 ejecutables quedan marcados como `BLOCKED` o `NOT_RUN`; nunca como `PASS`.
-

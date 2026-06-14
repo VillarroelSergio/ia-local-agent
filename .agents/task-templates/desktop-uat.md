@@ -26,6 +26,8 @@ comprobar resultados visibles, confirmaciones, efectos y seguridad.
 - Escala DPI:
 - Monitores:
 - Aplicacion objetivo:
+- PID/titulo esperado:
+- Identificador de documento temporal:
 - Ruta de evidencias:
 
 ## Preflight
@@ -35,6 +37,8 @@ comprobar resultados visibles, confirmaciones, efectos y seguridad.
 - [ ] LM Studio responde o el caso espera su ausencia.
 - [ ] App desktop abierta y conectada.
 - [ ] Datos de prueba sinteticos preparados.
+- [ ] PID, titulo y documento objetivo son unicos y verificables.
+- [ ] La aplicacion no ha reutilizado una ventana o documento del usuario.
 - [ ] No hay ventanas sensibles abiertas.
 - [ ] Se conoce como restaurar el estado tras cada caso.
 
@@ -81,4 +85,3 @@ Fallos enviados a:
 Regresiones automatizadas creadas:
 Riesgos residuales:
 ```
-
